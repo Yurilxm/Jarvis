@@ -1,42 +1,32 @@
-// Padrões de arquivos que nunca devem ser enviados para a IA
-const SENSITIVE_FILES = [
-  /\.env(\..*)?$/,
-  /credentials/i,
-  /secret/i,
-  /token/i,
-  /\.pem$/,
-  /id_rsa/,
-  /\.key$/,
-  /password/i,
-];
+import { isIgnored, filterIgnoredFiles, loadIgnore } from '../config/ignore.js';
 
-// Padrões de conteúdo suspeito no diff
+// Padrões de conteúdo suspeito no diff (segunda camada, após o ignore de arquivos)
 const SENSITIVE_PATTERNS = [
   /-----BEGIN.*PRIVATE KEY-----/,
   /-----BEGIN RSA PRIVATE KEY-----/,
   /-----BEGIN OPENSSH PRIVATE KEY-----/,
   /(api_key|apikey|api-key)\s*[=:]\s*['"][A-Za-z0-9_\-]{20,}['"]/i,
   /(secret|token|password)\s*[=:]\s*['"][^'"]+['"]/i,
-  /ghp_[A-Za-z0-9]{36}/,  // Token GitHub
+  /ghp_[A-Za-z0-9]{36}/,
   /gho_[A-Za-z0-9]{36}/,
   /ghu_[A-Za-z0-9]{36}/,
   /ghs_[A-Za-z0-9]{36}/,
   /ghr_[A-Za-z0-9]{36}/,
-  /sk-[A-Za-z0-9]{48}/,   // Chave OpenAI
+  /sk-[A-Za-z0-9]{48}/,
+  /AQ\.[A-Za-z0-9_\-]{20,}/,
 ];
 
 /**
- * Verifica se um caminho de arquivo é sensível.
+ * Verifica se um caminho de arquivo é sensível / ignorado.
  * @param {string} filePath
  * @returns {boolean}
  */
 export function isSensitiveFile(filePath) {
-  return SENSITIVE_FILES.some(pattern => pattern.test(filePath));
+  return isIgnored(filePath);
 }
 
 /**
- * Remove linhas com conteúdo sensível do diff.
- * Em vez de bloquear tudo, remove apenas as linhas perigosas e adiciona um aviso.
+ * Remove trechos com conteúdo sensível do diff.
  *
  * @param {string} diffContent
  * @returns {{ sanitized: string, warnings: string[] }}
@@ -56,21 +46,12 @@ export function sanitizeDiff(diffContent) {
 }
 
 /**
- * Filtra arquivos sensíveis da lista de arquivos.
+ * Filtra arquivos ignorados / sensíveis da lista.
  * @param {string[]} files
- * @returns {{ safe: string[], blocked: string[] }}
+ * @returns {{ safe: string[], blocked: string[], ignoreSource?: string }}
  */
 export function filterSensitiveFiles(files) {
-  const safe = [];
-  const blocked = [];
-
-  for (const file of files) {
-    if (isSensitiveFile(file)) {
-      blocked.push(file);
-    } else {
-      safe.push(file);
-    }
-  }
-
-  return { safe, blocked };
+  return filterIgnoredFiles(files);
 }
+
+export { loadIgnore, filterIgnoredFiles, isIgnored };

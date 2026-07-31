@@ -59,6 +59,24 @@ export function switchBranch(branchName) {
 }
 
 /**
+ * Cria um commit vazio (útil para bootstrap de branches).
+ * @param {string} message
+ * @returns {{ success: boolean, message: string }}
+ */
+export function createEmptyCommit(message = 'chore: initial commit') {
+  try {
+    const escaped = message.replace(/"/g, '\\"');
+    execSync(`git commit --allow-empty -m "${escaped}"`, {
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    });
+    return { success: true, message: 'Commit inicial criado.' };
+  } catch (error) {
+    return { success: false, message: error.stderr?.trim() || error.message };
+  }
+}
+
+/**
  * Cria uma nova branch a partir da branch atual.
  * @param {string} branchName
  * @returns {{ success: boolean, message: string }}

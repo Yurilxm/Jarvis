@@ -14,6 +14,29 @@ export function isGitRepo() {
 }
 
 /**
+ * Inicializa um repositório Git na pasta atual.
+ * @param {string} defaultBranch
+ * @returns {{ success: boolean, message: string }}
+ */
+export function initRepo(defaultBranch = 'main') {
+  try {
+    execSync(`git init -b ${defaultBranch}`, {
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    });
+    return {
+      success: true,
+      message: `Repositório Git inicializado na branch '${defaultBranch}'.`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.stderr?.trim() || error.message,
+    };
+  }
+}
+
+/**
  * Obtém o status do repositório Git.
  * Retorna listas de arquivos modificados, adicionados, removidos e não rastreados.
  *
