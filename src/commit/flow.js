@@ -3,8 +3,9 @@ import { getFullDiff } from '../git/diff.js';
 import { sanitizeDiff, filterSensitiveFiles } from './sanitize.js';
 import { buildCommitPrompt } from './promptBuilder.js';
 import { askAI } from '../ai/client.js';
-import { getCurrentBranch } from '../git/branch.js';
-import { confirm, input } from '@inquirer/prompts';
+import { getCurrentBranch, hasUncommittedChanges, switchBranch } from '../git/branch.js';
+import { PROTECTED_BRANCH, DEVELOPMENT_BRANCH } from '../config/branches.js';
+import { confirm, input, select } from '@inquirer/prompts';
 import { execSync } from 'node:child_process';
 import chalk from 'chalk';
 import logSymbols from 'log-symbols';
@@ -22,7 +23,69 @@ export async function runCommitFlow() {
 
   const branch = getCurrentBranch();
 
-  // 2. Obter status do Git
+  // 2. Proteção da main
+  if (branch === PROTECTED_BRANCH) {
+    console.warn(chalk.yellow(`\n${logSymbols.warning} Você está na branch '${PROTECTED_BRANCH}' (protegida).`));
+    console.warn(chalk.dim('Commits diretos na main não são recomendados.'));
+
+    const choice = await select({
+      message: 'O que deseja fazer?',
+      choices: [
+        { name: `Trocar para '${DEVELOPMENT_BRANCH}'`, value: 'switch' },
+        { name: `Continuar na '${PROTECTED_BRANCH}'`, value: 'continue' },
+        { name: 'Cancelar', value: 'cancel' },
+      ],
+    });
+
+    if (choice === 'cancel') {
+      console.log(chalk.yellow(`${logSymbols.info} Commit cancelado.`));
+      process.exit(0);
+    }
+
+    if (choice === 'switch') {
+      // Verificar se há alterações não commitadas
+      if (hasUncommittedChanges()) {
+        console.warn(chalk.yellow(`${logSymbols.warning} Existem alterações não commitadas.`));
+
+        const forceChoice = await confirm({
+          message: 'Tentar trocar mesmo assim? (alterações podem ser perdidas)',
+          default: false,
+        });
+
+        if (!forceChoice) {
+          console.log(chalk.yellow(`${logSymbols.info} Faça commit ou stash das alterações e tente novamente.`));
+          process.exit(0);
+        }
+      }
+
+      const result = switchBranch(DEVELOPMENT_BRANCH);
+      if (!result.success) {
+        console.error(chalk.red(`${logSymbols.error} Não foi possível trocar para '${DEVELOPMENT_BRANCH}':`));
+        console.error(chalk.dim(result.message));
+        process.exit(1);
+      }
+
+      console.log(chalk.green(`${logSymbols.success} Agora você está na branch '${DEVELOPMENT_BRANCH}'.`));
+      console.log(chalk.dim('Execute jarvis commit novamente para commitar suas alterações.'));
+      process.exit(0);
+    }
+
+    if (choice === 'continue') {
+      const confirmed = await confirm({
+        message: chalk.red(`Tem certeza que deseja commitar diretamente na '${PROTECTED_BRANCH}'?`),
+        default: false,
+      });
+
+      if (!confirmed) {
+        console.log(chalk.yellow(`${logSymbols.info} Commit cancelado.`));
+        process.exit(0);
+      }
+
+      console.warn(chalk.yellow(`${logSymbols.warning} Prosseguindo com commit na '${PROTECTED_BRANCH}'...`));
+    }
+  }
+
+  // 3. Obter status do Git
   const status = getGitStatus();
   const allChangedFiles = [
     ...status.staged,
@@ -31,7 +94,6 @@ export async function runCommitFlow() {
     ...status.untracked,
   ];
 
-  // Remove duplicatas
   const uniqueFiles = [...new Set(allChangedFiles)];
 
   if (uniqueFiles.length === 0) {
@@ -39,7 +101,7 @@ export async function runCommitFlow() {
     process.exit(0);
   }
 
-  // 3. Filtrar arquivos sensíveis
+  // 4. Filtrar arquivos sensíveis
   const { safe, blocked } = filterSensitiveFiles(uniqueFiles);
 
   if (blocked.length > 0) {
@@ -59,7 +121,7 @@ export async function runCommitFlow() {
     console.log(chalk.dim(`   - ${file}`));
   }
 
-  // 4. Obter e sanitizar o diff
+  // 5. Obter e sanitizar o diff
   const rawDiff = getFullDiff();
   const { sanitized, warnings } = sanitizeDiff(rawDiff);
 
@@ -72,7 +134,7 @@ export async function runCommitFlow() {
     process.exit(0);
   }
 
-  // 5. Enviar para a IA
+  // 6. Enviar para a IA
   console.log(chalk.blue(`\n${logSymbols.info} Gerando mensagem de commit com IA...`));
   const prompt = buildCommitPrompt(sanitized);
 
@@ -84,7 +146,7 @@ export async function runCommitFlow() {
     process.exit(1);
   }
 
-  // 6. Loop de aprovação/edição
+  // 7. Loop de aprovação/edição
   while (true) {
     console.log(chalk.bold(`\n${logSymbols.info} Mensagem sugerida:`));
     console.log(chalk.dim('─'.repeat(50)));
@@ -130,7 +192,7 @@ export async function runCommitFlow() {
     }
   }
 
-  // 7. Executar git add e git commit
+  // 8. Executar git add e git commit
   console.log(chalk.blue(`\n${logSymbols.info} Executando git add...`));
   try {
     execSync('git add .', { encoding: 'utf-8', stdio: 'inherit' });
@@ -141,7 +203,6 @@ export async function runCommitFlow() {
 
   console.log(chalk.blue(`${logSymbols.info} Executando git commit...`));
 
-  // Separar título e corpo
   const bodySeparator = '---BODY---';
   let title = message;
   let body = '';
@@ -175,9 +236,11 @@ export async function runCommitFlow() {
 
   console.log(chalk.green(`${logSymbols.success} Commit realizado com sucesso!`));
 
-  // 8. Perguntar sobre push
+  // 9. Perguntar sobre push
+  const currentBranchAfterCommit = getCurrentBranch();
+
   const shouldPush = await confirm({
-    message: 'Deseja fazer push?',
+    message: `Deseja fazer push da branch '${currentBranchAfterCommit}'?`,
     default: false,
   });
 
@@ -186,6 +249,26 @@ export async function runCommitFlow() {
     try {
       execSync('git push', { encoding: 'utf-8', stdio: 'inherit' });
       console.log(chalk.green(`${logSymbols.success} Push realizado com sucesso!`));
+
+      // 10. Se for dev, sugerir merge
+      if (currentBranchAfterCommit === DEVELOPMENT_BRANCH) {
+        console.log('');
+        const mergeChoice = await select({
+          message: 'Deseja iniciar o merge dev → main?',
+          choices: [
+            { name: 'Iniciar merge agora', value: 'now' },
+            { name: 'Testar depois', value: 'later' },
+            { name: 'Não', value: 'no' },
+          ],
+        });
+
+        if (mergeChoice === 'now') {
+          const { runMergeFlow } = await import('./merge.js');
+          await runMergeFlow();
+        } else if (mergeChoice === 'later') {
+          console.log(chalk.dim('Merge adiado. Execute jarvis merge quando estiver pronto.'));
+        }
+      }
     } catch (error) {
       console.error(chalk.red(`${logSymbols.error} Erro ao executar git push: ${error.message}`));
       console.error(chalk.dim('O commit foi feito localmente, mas o push falhou.'));
