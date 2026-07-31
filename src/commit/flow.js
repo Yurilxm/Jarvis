@@ -3,7 +3,7 @@ import { getFullDiff } from '../git/diff.js';
 import { sanitizeDiff, filterSensitiveFiles } from './sanitize.js';
 import { buildCommitPrompt } from './promptBuilder.js';
 import { askAI } from '../ai/client.js';
-import { getCurrentBranch, hasUncommittedChanges, switchBranch } from '../git/branch.js';
+import { getCurrentBranch, hasUncommittedChanges, switchBranch, getPushRemote } from '../git/branch.js';
 import { PROTECTED_BRANCH, DEVELOPMENT_BRANCH } from '../config/branches.js';
 import { confirm, input, select } from '@inquirer/prompts';
 import { execSync } from 'node:child_process';
@@ -247,34 +247,42 @@ export async function runCommitFlow() {
   if (shouldPush) {
     console.log(chalk.blue(`${logSymbols.info} Executando git push...`));
     try {
-      execSync('git push', { encoding: 'utf-8', stdio: 'inherit' });
-      console.log(chalk.green(`${logSymbols.success} Push realizado com sucesso!`));
+        const pushRemote = getPushRemote(currentBranchAfterCommit);
+        if (pushRemote) {
+        execSync('git push', { encoding: 'utf-8', stdio: 'inherit' });
+        } else {
+        execSync(`git push --set-upstream origin ${currentBranchAfterCommit}`, {
+            encoding: 'utf-8',
+            stdio: 'inherit',
+        });
+        }
+        console.log(chalk.green(`${logSymbols.success} Push realizado com sucesso!`));
 
-      // 10. Se for dev, sugerir merge
-      if (currentBranchAfterCommit === DEVELOPMENT_BRANCH) {
+        // 10. Se for dev, sugerir merge
+        if (currentBranchAfterCommit === DEVELOPMENT_BRANCH) {
         console.log('');
         const mergeChoice = await select({
-          message: 'Deseja iniciar o merge dev → main?',
-          choices: [
+            message: 'Deseja iniciar o merge dev → main?',
+            choices: [
             { name: 'Iniciar merge agora', value: 'now' },
             { name: 'Testar depois', value: 'later' },
             { name: 'Não', value: 'no' },
-          ],
+            ],
         });
 
         if (mergeChoice === 'now') {
-          const { runMergeFlow } = await import('./merge.js');
-          await runMergeFlow();
+            const { runMergeFlow } = await import('./merge.js');
+            await runMergeFlow();
         } else if (mergeChoice === 'later') {
-          console.log(chalk.dim('Merge adiado. Execute jarvis merge quando estiver pronto.'));
+            console.log(chalk.dim('Merge adiado. Execute jarvis merge quando estiver pronto.'));
         }
-      }
+        }
     } catch (error) {
-      console.error(chalk.red(`${logSymbols.error} Erro ao executar git push: ${error.message}`));
-      console.error(chalk.dim('O commit foi feito localmente, mas o push falhou.'));
-      process.exit(1);
+        console.error(chalk.red(`${logSymbols.error} Erro ao executar git push: ${error.message}`));
+        console.error(chalk.dim('O commit foi feito localmente, mas o push falhou.'));
+        process.exit(1);
     }
-  } else {
+    } else {
     console.log(chalk.dim('Push não realizado. Lembre-se de fazer push manualmente.'));
-  }
+    }
 }
