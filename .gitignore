@@ -1,7 +1,6 @@
 ﻿# Dependências
 node_modules/
 
-# Ambiente — contém chave da Gemini e outras variáveis sensíveis
 .env
 
 # Logs
