@@ -1,6 +1,6 @@
-﻿import { GEMINI_API_KEY } from '../config/env.js';
+﻿import { GEMINI_API_KEY, GEMINI_MODEL } from '../config/env.js';
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 /**
  * Envia um prompt para a API Gemini e retorna a resposta.
@@ -28,7 +28,6 @@ export async function generateWithGemini(prompt) {
 
   const data = await response.json();
 
-  // Extrai o texto da resposta
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
   if (!text) {

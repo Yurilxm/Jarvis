@@ -3,6 +3,7 @@ import { getFullDiff } from '../git/diff.js';
 import { sanitizeDiff, filterSensitiveFiles } from './sanitize.js';
 import { buildCommitPrompt } from './promptBuilder.js';
 import { askAI } from '../ai/client.js';
+import { getCurrentBranch } from '../git/branch.js';
 import { confirm, input } from '@inquirer/prompts';
 import { execSync } from 'node:child_process';
 import chalk from 'chalk';
@@ -18,6 +19,8 @@ export async function runCommitFlow() {
     console.error(chalk.dim('Execute o Jarvis dentro de um projeto com git init.'));
     process.exit(1);
   }
+
+  const branch = getCurrentBranch();
 
   // 2. Obter status do Git
   const status = getGitStatus();
@@ -51,7 +54,7 @@ export async function runCommitFlow() {
     process.exit(0);
   }
 
-  console.log(chalk.blue(`${logSymbols.info} ${safe.length} arquivo(s) para analisar:`));
+  console.log(chalk.blue(`${logSymbols.info} Branch: ${chalk.green(branch)} | ${safe.length} arquivo(s) para analisar:`));
   for (const file of safe) {
     console.log(chalk.dim(`   - ${file}`));
   }
