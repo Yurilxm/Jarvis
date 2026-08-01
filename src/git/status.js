@@ -37,14 +37,67 @@ export function initRepo(defaultBranch = 'main') {
 }
 
 /**
+ * Remove aspas externas de um path e desfaz o escaping C-style
+ * que o Git usa para paths com espaços, acentos ou caracteres especiais.
+ * @param {string} str
+ * @returns {string}
+ */
+function unquotePath(str) {
+  if (str.startsWith('"') && str.endsWith('"') && str.length >= 2) {
+    str = str.slice(1, -1);
+    str = str.replace(/\\([0-7]{3}|["\\abfnrtv])/g, (match, esc) => {
+      if (/^[0-7]{3}$/.test(esc)) {
+        return String.fromCharCode(parseInt(esc, 8));
+      }
+      const map = { '"': '"', '\\': '\\', a: '\x07', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' };
+      return map[esc] ?? esc;
+    });
+  }
+  return str;
+}
+
+/**
+ * Faz o parsing de uma linha do `git status --porcelain`.
+ * Cobre os três formatos possíveis:
+ *   " M arquivo.txt"
+ *   "\"M arquivo.txt\""          (linha inteira entre aspas)
+ *   "?? \"arquivo novo.txt\""    (só o path entre aspas)
+ *   "R  old.txt -> new.txt"      (renomeio, com ou sem aspas no novo path)
+ *
+ * @param {string} rawLine
+ * @returns {{ status: string, file: string }}
+ */
+function parsePorcelainLine(rawLine) {
+  let line = rawLine;
+
+  // Caso 1: a linha inteira veio entre aspas
+  if (line.startsWith('"') && line.endsWith('"')) {
+    line = unquotePath(line);
+  }
+
+  const status = line.substring(0, 2);
+  let file = line.substring(3).trim();
+
+  // Caso 2: só o path veio entre aspas
+  file = unquotePath(file);
+
+  // Renomeios: pega apenas o novo path
+  if (file.includes(' -> ')) {
+    const parts = file.split(' -> ');
+    file = unquotePath(parts[parts.length - 1].trim());
+  }
+
+  return { status, file };
+}
+
+/**
  * Obtém o status do repositório Git.
  * Retorna listas de arquivos modificados, adicionados, removidos e não rastreados.
  *
  * @returns {{ staged: string[], modified: string[], deleted: string[], untracked: string[] }}
  */
 export function getGitStatus() {
-  // --porcelain dá uma saída fácil de parsear
-  const output = execSync('git status --porcelain', { encoding: 'utf-8' }).trim();
+  const output = execSync('git status --porcelain', { encoding: 'utf-8' }).replace(/\r?\n+$/, '');
 
   const staged = [];
   const modified = [];
@@ -55,32 +108,28 @@ export function getGitStatus() {
     return { staged, modified, deleted, untracked };
   }
 
-  for (const line of output.split('\n')) {
-    const status = line.substring(0, 2);
-    const file = line.substring(3).trim();
+  for (const rawLine of output.split('\n')) {
+    if (!rawLine) continue;
 
-    // Status no índice (primeiro caractere) e na árvore de trabalho (segundo caractere)
+    const { status, file } = parsePorcelainLine(rawLine);
     const index = status[0];
     const workTree = status[1];
 
-    // Arquivos staged (adicionados ao índice)
+    if (status === '??') {
+      untracked.push(file);
+      continue;
+    }
+
     if (index === 'M' || index === 'A' || index === 'R') {
       staged.push(file);
     }
 
-    // Arquivos modificados na árvore de trabalho
     if (workTree === 'M') {
       modified.push(file);
     }
 
-    // Arquivos removidos
     if (workTree === 'D' || index === 'D') {
       deleted.push(file);
-    }
-
-    // Arquivos não rastreados
-    if (status === '??') {
-      untracked.push(file);
     }
   }
 

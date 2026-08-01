@@ -37,6 +37,8 @@ import {
 import { loadProfile, saveProfile, deleteProfile } from './config/profile.js';
 import { fetchGitHubUser } from './github/user.js';
 import { GITHUB_TOKEN } from './config/env.js';
+import { jiraList, jiraView, jiraStatus, jiraMove } from './jira/flow.js';
+
 
 const command = process.argv[2];
 const subcommand = process.argv[3];
@@ -88,6 +90,8 @@ async function main() {
     await handlePrCommand(subcommand, arg);
   } else if (command === 'profile') {
     await handleProfileCommand(subcommand);
+  } else if (command === 'jira') {
+    await handleJiraCommand(subcommand, arg);
   } else {
     await showLoading('Inicializando Jarvis', {
       steps: ['Boot', 'Carregando comandos', 'Pronto'],
@@ -700,48 +704,103 @@ async function resetProfile() {
   success('Perfil removido.');
 }
 
+// ─── Jira commands ────────────────────────────────────────
+
+async function handleJiraCommand(sub, issueKey) {
+  if (!sub || sub === 'list') {
+    await jiraList();
+  } else if (sub === 'view') {
+    if (!issueKey) { error('Chave da issue é obrigatória.'); process.exit(1); }
+    await jiraView(issueKey);
+  } else if (sub === 'status') {
+    if (!issueKey) { error('Chave da issue é obrigatória.'); process.exit(1); }
+    await jiraStatus(issueKey);
+  } else if (sub === 'move') {
+    if (!issueKey) { error('Chave da issue é obrigatória.'); process.exit(1); }
+    await jiraMove(issueKey);
+  } else {
+    error(`Subcomando desconhecido: ${sub}`);
+    dim('Use: list, view <issue>, status <issue>, start <issue>, finish <issue>');
+    process.exit(1);
+  }
+}
+
 // ─── Help ─────────────────────────────────────────────────
 
 function showHelp() {
   printBanner();
 
-  const commands = [
-    ['jarvis init', 'Inicializa um repositório Git'],
-    ['jarvis profile setup', 'Configura perfil do desenvolvedor'],
-    ['jarvis profile show', 'Mostra perfil atual'],
-    ['jarvis profile sync', 'Sincroniza perfil com GitHub'],
-    ['jarvis profile edit', 'Edita perfil manualmente'],
-    ['jarvis profile reset', 'Remove perfil local'],
-    ['jarvis ignore', 'Gerencia lista de ignore (IA + manual)'],
-    ['jarvis history', 'Histórico de commits/pushes do Jarvis'],
-    ['jarvis pull', 'Atualiza a branch atual (git pull)'],
-    ['jarvis update', 'Atualiza o Jarvis (pull + npm install)'],
-    ['jarvis commit', 'Gera mensagem de commit com IA'],
-    ['jarvis merge [origem] [destino]', 'Merge entre branches (dev → main)'],
-    ['jarvis status', 'Mostra status do repositório'],
-    ['jarvis branch list', 'Lista branches locais'],
-    ['jarvis branch create <nome>', 'Cria uma nova branch'],
-    ['jarvis branch switch <nome>', 'Troca para uma branch'],
-    ['jarvis pr list', 'Lista PRs abertas'],
-    ['jarvis pr view <n>', 'Detalhes de uma PR'],
-    ['jarvis pr diff <n>', 'Diff de uma PR'],
-    ['jarvis pr review <n>', 'Revisão com IA'],
-    ['jarvis pr checkout <n>', 'Checkout da branch da PR'],
-    ['jarvis pr approve <n>', 'Aprovar PR'],
-    ['jarvis pr request-changes <n>', 'Solicitar alterações'],
-    ['jarvis pr comment <n>', 'Comentar em uma PR'],
-    ['jarvis pr merge <n>', 'Fazer merge da PR'],
-    ['jarvis pr close <n>', 'Fechar PR sem merge'],
+  const sections = [
+    {
+      title: 'projeto',
+      commands: [
+        ['jarvis init', 'Inicializa um repositório Git'],
+        ['jarvis status', 'Mostra status do repositório'],
+        ['jarvis pull', 'Atualiza a branch atual (git pull)'],
+        ['jarvis update', 'Atualiza o Jarvis (pull + npm install)'],
+      ]
+    },
+    {
+      title: 'commit',
+      commands: [
+        ['jarvis commit', 'Gera mensagem de commit com IA'],
+        ['jarvis merge [origem] [destino]', 'Merge entre branches (dev → main)'],
+      ]
+    },
+    {
+      title: 'branches',
+      commands: [
+        ['jarvis branch list', 'Lista branches locais'],
+        ['jarvis branch create <nome>', 'Cria uma nova branch'],
+        ['jarvis branch switch <nome>', 'Troca para uma branch'],
+      ]
+    },
+    {
+      title: 'pull requests',
+      commands: [
+        ['jarvis pr list', 'Lista PRs abertas'],
+        ['jarvis pr view <n>', 'Detalhes de uma PR'],
+        ['jarvis pr diff <n>', 'Diff de uma PR'],
+        ['jarvis pr review <n>', 'Revisão com IA'],
+        ['jarvis pr checkout <n>', 'Checkout da branch da PR'],
+        ['jarvis pr approve <n>', 'Aprovar PR'],
+        ['jarvis pr merge <n>', 'Fazer merge da PR'],
+        ['jarvis pr close <n>', 'Fechar PR sem merge'],
+      ]
+    },
+    {
+      title: 'jira',
+      commands: [
+        ['jarvis jira list', 'Lista issues do Jira'],
+        ['jarvis jira view <issue>', 'Detalhes de uma issue'],
+        ['jarvis jira move <issue>', 'Move issue para outro status'],
+      ]
+    },
+    {
+      title: 'perfil',
+      commands: [
+        ['jarvis profile setup', 'Configura perfil do desenvolvedor'],
+        ['jarvis profile show', 'Mostra perfil atual'],
+        ['jarvis profile edit', 'Edita perfil manualmente'],
+      ]
+    },
+    {
+      title: 'outros',
+      commands: [
+        ['jarvis ignore', 'Gerencia lista de ignore (IA + manual)'],
+        ['jarvis history', 'Histórico de commits/pushes do Jarvis'],
+      ]
+    },
   ];
 
-  const body = commands
-    .map(([cmd, desc]) => `${chalk.green(cmd.padEnd(36))} ${muted(desc)}`)
-    .join('\n');
-
-  printBox(body, { title: 'comandos' });
+  for (const section of sections) {
+    const body = section.commands
+      .map(([cmd, desc]) => `${chalk.green(cmd.padEnd(36))} ${muted(desc)}`)
+      .join('\n');
+    printBox(body, { title: section.title });
+  }
 
   dim(`  Branch protegida: ${chalk.yellow(PROTECTED_BRANCH)}`);
   dim('  Sem git? Rode jarvis init nesta pasta.');
-  dim('  Ignore: defaults + .jarvisignore (veja .jarvisignore.example)');
   blank();
 }

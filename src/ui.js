@@ -2,10 +2,25 @@ import chalk from 'chalk';
 import boxen from 'boxen';
 import ora from 'ora';
 import logSymbols from 'log-symbols';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 const accent = chalk.cyan;
 const muted = chalk.dim;
 const label = chalk.bold;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function getVersion() {
+  try {
+    const pkg = JSON.parse(readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8'));
+    return pkg.version || '1.0.0';
+  } catch {
+    return '1.0.0';
+  }
+}
 
 export function printBanner() {
   const art = [
@@ -17,9 +32,11 @@ export function printBanner() {
     ' ╚════╝ ╚═╝  ╚═╝╚═╝  ╚═╝  ╚═══╝  ╚═╝╚══════╝',
   ].join('\n');
 
+  const version = getVersion();
+
   console.log('');
   console.log(chalk.green(art));
-  console.log(muted('  Assistente pessoal de automação  ·  v1'));
+  console.log(muted(`  Assistente pessoal de automação  ·  v${version}`));
   console.log('');
 }
 
