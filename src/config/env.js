@@ -20,4 +20,7 @@ if (!GEMINI_API_KEY) {
   process.exit(1);
 }
 
-export { GEMINI_API_KEY, GEMINI_MODEL };
+// GitHub
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
+
+export { GEMINI_API_KEY, GEMINI_MODEL, GITHUB_TOKEN };

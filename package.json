@@ -18,6 +18,7 @@
     "@inquirer/prompts": "^8.5.2",
     "chalk": "^6.0.0",
     "dotenv": "^17.4.2",
-    "log-symbols": "^7.0.1"
+    "log-symbols": "^7.0.1",
+    "octokit": "^5.0.5"
   }
 }
