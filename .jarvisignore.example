@@ -1,0 +1,14 @@
+# .jarvisignore — arquivos que o Jarvis NÃO envia à IA e NÃO inclui no git add
+# Sintaxe igual ao .gitignore
+#
+# Prefira editar pelo menu:
+#   jarvis ignore
+#
+# Defaults internos (.env, *.pem, etc.) já vêm ativos.
+# Desativar um default pelo menu grava: # @disable <padrão>
+
+# Exemplos manuais:
+# dist/
+# coverage/
+# *.local
+# config/private/**

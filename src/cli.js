@@ -2,80 +2,196 @@
 
 import { runCommitFlow } from './commit/flow.js';
 import { runMergeFlow } from './commit/merge.js';
-import { isGitRepo, getGitStatus } from './git/status.js';
+import { isGitRepo, getGitStatus, initRepo } from './git/status.js';
 import {
   getCurrentBranch,
   listBranches,
   switchBranch,
   createBranch,
+  createEmptyCommit,
   hasUncommittedChanges,
 } from './git/branch.js';
 import { prList, prView, prDiff, prReview, prCheckout, prApprove, prRequestChanges, prComment, prMerge, prClose } from './pr/flow.js';
-import { PROTECTED_BRANCH } from './config/branches.js';
-import { confirm, input } from '@inquirer/prompts';
-import chalk from 'chalk';
-import logSymbols from 'log-symbols';
+import { PROTECTED_BRANCH, DEVELOPMENT_BRANCH } from './config/branches.js';
+import { runIgnoreMenu } from './ignore/menu.js';
+import { runHistoryView } from './history/view.js';
+import { confirm } from '@inquirer/prompts';
+import {
+  printBanner,
+  printBox,
+  printFileList,
+  info,
+  success,
+  warn,
+  error,
+  dim,
+  blank,
+  section,
+  showLoading,
+  chalk,
+  accent,
+  muted,
+} from './ui.js';
 
 const command = process.argv[2];
 const subcommand = process.argv[3];
 const arg = process.argv[4];
 
-if (command === 'commit') {
-  runCommitFlow();
-} else if (command === 'merge') {
-  const source = subcommand || null;
-  const target = arg || null;
-  runMergeFlow(source, target);
-} else if (command === 'status') {
-  showStatus();
-} else if (command === 'branch') {
-  handleBranchCommand(subcommand, arg);
-} else if (command === 'pr') {
-  handlePrCommand(subcommand, arg);
-} else {
-  showHelp();
+await main();
+
+async function main() {
+  if (command === 'init') {
+    await runInitFlow();
+  } else if (command === 'ignore') {
+    await runIgnoreMenu();
+  } else if (command === 'history') {
+    const pushedOnly = subcommand === '--pushed' || arg === '--pushed';
+    const limitArg = [subcommand, arg].find((v) => v && /^\d+$/.test(v));
+    await showLoading('Carregando histórico', {
+      steps: ['Lendo .jarvis/history', 'Montando timeline'],
+      durationMs: 450,
+    });
+    await runHistoryView({
+      limit: limitArg ? Number(limitArg) : 30,
+      pushedOnly,
+    });
+  } else if (command === 'commit') {
+    await runCommitFlow();
+  } else if (command === 'merge') {
+    await showLoading('Iniciando merge', {
+      steps: ['Verificando branches', 'Preparando merge', 'Pronto'],
+      durationMs: 700,
+    });
+    await runMergeFlow(subcommand || null, arg || null);
+  } else if (command === 'status') {
+    await showLoading('Lendo repositório', {
+      steps: ['Checando git', 'Coletando status'],
+      durationMs: 500,
+    });
+    showStatus();
+  } else if (command === 'branch') {
+    await showLoading('Carregando branches', {
+      steps: ['Lendo refs', 'Montando lista'],
+      durationMs: 450,
+    });
+    await handleBranchCommand(subcommand, arg);
+  } else if (command === 'pr') {
+    await handlePrCommand(subcommand, arg);
+  } else {
+    await showLoading('Inicializando Jarvis', {
+      steps: ['Boot', 'Carregando comandos', 'Pronto'],
+      durationMs: 800,
+    });
+    showHelp();
+  }
+}
+
+// ─── Init ─────────────────────────────────────────────────
+
+async function runInitFlow() {
+  printBanner();
+
+  if (isGitRepo()) {
+    warn('Este diretório já é um repositório Git.');
+    dim(`Branch atual: ${getCurrentBranch()}`);
+    process.exit(0);
+  }
+
+  await showLoading('Inicializando repositório', {
+    steps: ['Criando .git', `Branch ${PROTECTED_BRANCH}`, 'Finalizando'],
+    durationMs: 700,
+  });
+
+  const result = initRepo(PROTECTED_BRANCH);
+  if (!result.success) {
+    error(`Falha ao inicializar: ${result.message}`);
+    process.exit(1);
+  }
+
+  success(result.message);
+
+  const setupDev = await confirm({
+    message: `Criar branch '${DEVELOPMENT_BRANCH}' e commit inicial vazio?`,
+    default: true,
+  });
+
+  if (setupDev) {
+    const commitResult = createEmptyCommit('chore: initial commit');
+    if (!commitResult.success) {
+      warn(`Não foi possível criar o commit inicial: ${commitResult.message}`);
+      dim('Você pode criar a branch depois com: jarvis branch create dev');
+    } else {
+      success(commitResult.message);
+      const branchResult = createBranch(DEVELOPMENT_BRANCH);
+      if (!branchResult.success) {
+        warn(branchResult.message);
+      } else {
+        success(branchResult.message);
+        const goDev = await confirm({
+          message: `Trocar para '${DEVELOPMENT_BRANCH}' agora?`,
+          default: true,
+        });
+        if (goDev) {
+          const sw = switchBranch(DEVELOPMENT_BRANCH);
+          if (sw.success) {
+            success(`Agora você está na branch '${DEVELOPMENT_BRANCH}'.`);
+          } else {
+            warn(sw.message);
+          }
+        }
+      }
+    }
+  }
+
+  blank();
+  printBox(
+    `${muted('Próximos passos')}\n` +
+    `${chalk.green('jarvis status')}   ver arquivos\n` +
+    `${chalk.green('jarvis commit')}   gerar commit com IA`,
+    { title: ' pronto ' }
+  );
 }
 
 // ─── PR commands ──────────────────────────────────────────
 
 async function handlePrCommand(sub, arg) {
   if (!isGitRepo()) {
-    console.error(chalk.red(`${logSymbols.error} Este diretório não é um repositório Git.`));
+    error('Este diretório não é um repositório Git.');
     process.exit(1);
   }
 
   if (!sub || sub === 'list') {
     await prList();
   } else if (sub === 'view') {
-    if (!arg) { console.error(chalk.red(`${logSymbols.error} Número da PR é obrigatório.`)); process.exit(1); }
+    if (!arg) { error('Número da PR é obrigatório.'); process.exit(1); }
     await prView(parseInt(arg));
   } else if (sub === 'diff') {
-    if (!arg) { console.error(chalk.red(`${logSymbols.error} Número da PR é obrigatório.`)); process.exit(1); }
+    if (!arg) { error('Número da PR é obrigatório.'); process.exit(1); }
     await prDiff(parseInt(arg));
   } else if (sub === 'review') {
-    if (!arg) { console.error(chalk.red(`${logSymbols.error} Número da PR é obrigatório.`)); process.exit(1); }
+    if (!arg) { error('Número da PR é obrigatório.'); process.exit(1); }
     await prReview(parseInt(arg));
   } else if (sub === 'checkout') {
-    if (!arg) { console.error(chalk.red(`${logSymbols.error} Número da PR é obrigatório.`)); process.exit(1); }
+    if (!arg) { error('Número da PR é obrigatório.'); process.exit(1); }
     await prCheckout(parseInt(arg));
   } else if (sub === 'approve') {
-    if (!arg) { console.error(chalk.red(`${logSymbols.error} Número da PR é obrigatório.`)); process.exit(1); }
+    if (!arg) { error('Número da PR é obrigatório.'); process.exit(1); }
     await prApprove(parseInt(arg));
   } else if (sub === 'request-changes') {
-    if (!arg) { console.error(chalk.red(`${logSymbols.error} Número da PR é obrigatório.`)); process.exit(1); }
+    if (!arg) { error('Número da PR é obrigatório.'); process.exit(1); }
     await prRequestChanges(parseInt(arg));
   } else if (sub === 'comment') {
-    if (!arg) { console.error(chalk.red(`${logSymbols.error} Número da PR é obrigatório.`)); process.exit(1); }
+    if (!arg) { error('Número da PR é obrigatório.'); process.exit(1); }
     await prComment(parseInt(arg));
   } else if (sub === 'merge') {
-    if (!arg) { console.error(chalk.red(`${logSymbols.error} Número da PR é obrigatório.`)); process.exit(1); }
+    if (!arg) { error('Número da PR é obrigatório.'); process.exit(1); }
     await prMerge(parseInt(arg));
   } else if (sub === 'close') {
-    if (!arg) { console.error(chalk.red(`${logSymbols.error} Número da PR é obrigatório.`)); process.exit(1); }
+    if (!arg) { error('Número da PR é obrigatório.'); process.exit(1); }
     await prClose(parseInt(arg));
   } else {
-    console.error(chalk.red(`${logSymbols.error} Subcomando desconhecido: ${sub}`));
-    console.log(chalk.dim('Use: list, view <n>, diff <n>, review <n>, checkout <n>, approve <n>, request-changes <n>, comment <n>, merge <n>, close <n>'));
+    error(`Subcomando desconhecido: ${sub}`);
+    dim('Use: list, view <n>, diff <n>, review <n>, checkout <n>, approve <n>, request-changes <n>, comment <n>, merge <n>, close <n>');
     process.exit(1);
   }
 }
@@ -84,7 +200,8 @@ async function handlePrCommand(sub, arg) {
 
 function showStatus() {
   if (!isGitRepo()) {
-    console.error(chalk.red(`${logSymbols.error} Este diretório não é um repositório Git.`));
+    error('Este diretório não é um repositório Git.');
+    dim('Entre na pasta de um projeto com git, ou rode: jarvis init');
     process.exit(1);
   }
 
@@ -96,61 +213,54 @@ function showStatus() {
     ? chalk.yellow(`${branch} (protegida)`)
     : chalk.green(branch);
 
-  console.log(chalk.bold(`\nBranch atual: ${branchLabel}`));
-
-  if (branches.length > 0) {
-    const formatted = branches.map(b =>
+  blank();
+  printBox(
+    `${chalk.bold('Branch')}  ${branchLabel}\n${muted('Locais')}  ${branches.map((b) =>
       b === PROTECTED_BRANCH ? chalk.yellow(b) : b
-    );
-    console.log(chalk.dim(`Branches locais: ${formatted.join(', ')}`));
-  }
+    ).join(muted(' · '))}`,
+    { title: 'status' }
+  );
 
   const total = status.staged.length + status.modified.length +
                 status.deleted.length + status.untracked.length;
 
   if (total === 0) {
-    console.log(chalk.green(`${logSymbols.success} Árvore de trabalho limpa.`));
+    success('Árvore de trabalho limpa.');
+    blank();
     return;
   }
 
-  console.log(chalk.yellow(`\n${logSymbols.info} ${total} arquivo(s) com alterações:\n`));
+  section(`${total} arquivo(s) com alterações`);
 
   if (status.staged.length > 0) {
-    console.log(chalk.green('  Staged:'));
-    for (const file of status.staged) {
-      console.log(chalk.dim(`    + ${file}`));
-    }
+    console.log(chalk.green('  staged'));
+    printFileList(status.staged, { bullet: '+', color: 'green' });
   }
 
   if (status.modified.length > 0) {
-    console.log(chalk.yellow('  Modificados:'));
-    for (const file of status.modified) {
-      console.log(chalk.dim(`    ~ ${file}`));
-    }
+    console.log(chalk.yellow('  modificados'));
+    printFileList(status.modified, { bullet: '~', color: 'yellow' });
   }
 
   if (status.deleted.length > 0) {
-    console.log(chalk.red('  Removidos:'));
-    for (const file of status.deleted) {
-      console.log(chalk.dim(`    - ${file}`));
-    }
+    console.log(chalk.red('  removidos'));
+    printFileList(status.deleted, { bullet: '-', color: 'red' });
   }
 
   if (status.untracked.length > 0) {
-    console.log(chalk.blue('  Não rastreados:'));
-    for (const file of status.untracked) {
-      console.log(chalk.dim(`    ? ${file}`));
-    }
+    console.log(chalk.blue('  não rastreados'));
+    printFileList(status.untracked, { bullet: '?', color: 'blue' });
   }
 
-  console.log('');
+  blank();
 }
 
 // ─── Branch commands ──────────────────────────────────────
 
 async function handleBranchCommand(sub, arg) {
   if (!isGitRepo()) {
-    console.error(chalk.red(`${logSymbols.error} Este diretório não é um repositório Git.`));
+    error('Este diretório não é um repositório Git.');
+    dim('Rode: jarvis init');
     process.exit(1);
   }
 
@@ -158,21 +268,21 @@ async function handleBranchCommand(sub, arg) {
     listBranchesCmd();
   } else if (sub === 'create') {
     if (!arg) {
-      console.error(chalk.red(`${logSymbols.error} Nome da branch é obrigatório.`));
-      console.log(chalk.dim('Uso: jarvis branch create <nome>'));
+      error('Nome da branch é obrigatório.');
+      dim('Uso: jarvis branch create <nome>');
       process.exit(1);
     }
     await createBranchCmd(arg);
   } else if (sub === 'switch') {
     if (!arg) {
-      console.error(chalk.red(`${logSymbols.error} Nome da branch é obrigatório.`));
-      console.log(chalk.dim('Uso: jarvis branch switch <nome>'));
+      error('Nome da branch é obrigatório.');
+      dim('Uso: jarvis branch switch <nome>');
       process.exit(1);
     }
     await switchBranchCmd(arg);
   } else {
-    console.error(chalk.red(`${logSymbols.error} Subcomando desconhecido: ${sub}`));
-    console.log(chalk.dim('Use: list, create <nome>, switch <nome>'));
+    error(`Subcomando desconhecido: ${sub}`);
+    dim('Use: list, create <nome>, switch <nome>');
     process.exit(1);
   }
 }
@@ -181,28 +291,30 @@ function listBranchesCmd() {
   const branches = listBranches();
   const current = getCurrentBranch();
 
-  console.log(chalk.bold('\nBranches locais:'));
+  section('Branches locais');
   for (const branch of branches) {
-    const marker = branch === current ? chalk.green('*') : ' ';
+    const marker = branch === current ? chalk.green('●') : muted('○');
     const name = branch === PROTECTED_BRANCH
       ? chalk.yellow(`${branch} (protegida)`)
-      : branch;
-    console.log(`  ${marker} ${name}`);
+      : branch === current
+        ? chalk.green(branch)
+        : branch;
+    console.log(`  ${marker}  ${name}`);
   }
-  console.log('');
+  blank();
 }
 
 async function createBranchCmd(name) {
   const current = getCurrentBranch();
-  console.log(chalk.blue(`\n${logSymbols.info} Criando branch '${name}' a partir de '${current}'...`));
+  info(`Criando branch '${accent(name)}' a partir de '${current}'...`);
 
   const result = createBranch(name);
   if (!result.success) {
-    console.error(chalk.red(`${logSymbols.error} ${result.message}`));
+    error(result.message);
     process.exit(1);
   }
 
-  console.log(chalk.green(`${logSymbols.success} ${result.message}`));
+  success(result.message);
 
   const shouldSwitch = await confirm({
     message: `Deseja trocar para a branch '${name}'?`,
@@ -212,9 +324,9 @@ async function createBranchCmd(name) {
   if (shouldSwitch) {
     const switchResult = switchBranch(name);
     if (switchResult.success) {
-      console.log(chalk.green(`${logSymbols.success} Agora você está na branch '${name}'.`));
+      success(`Agora você está na branch '${name}'.`);
     } else {
-      console.error(chalk.red(`${logSymbols.error} ${switchResult.message}`));
+      error(switchResult.message);
     }
   }
 }
@@ -223,12 +335,12 @@ async function switchBranchCmd(name) {
   const current = getCurrentBranch();
 
   if (name === current) {
-    console.log(chalk.yellow(`${logSymbols.info} Você já está na branch '${name}'.`));
+    info(`Você já está na branch '${name}'.`);
     return;
   }
 
   if (hasUncommittedChanges()) {
-    console.warn(chalk.yellow(`${logSymbols.warning} Existem alterações não commitadas na branch atual.`));
+    warn('Existem alterações não commitadas na branch atual.');
 
     const proceed = await confirm({
       message: 'Tentar trocar mesmo assim?',
@@ -236,19 +348,19 @@ async function switchBranchCmd(name) {
     });
 
     if (!proceed) {
-      console.log(chalk.yellow(`${logSymbols.info} Troca cancelada.`));
+      info('Troca cancelada.');
       process.exit(0);
     }
   }
 
-  console.log(chalk.blue(`${logSymbols.info} Trocando para branch '${name}'...`));
+  info(`Trocando para branch '${name}'...`);
   const result = switchBranch(name);
 
   if (result.success) {
-    console.log(chalk.green(`${logSymbols.success} Agora você está na branch '${name}'.`));
+    success(`Agora você está na branch '${name}'.`);
   } else {
-    console.error(chalk.red(`${logSymbols.error} Não foi possível trocar para '${name}':`));
-    console.error(chalk.dim(result.message));
+    error(`Não foi possível trocar para '${name}':`);
+    dim(result.message);
     process.exit(1);
   }
 }
@@ -256,27 +368,38 @@ async function switchBranchCmd(name) {
 // ─── Help ─────────────────────────────────────────────────
 
 function showHelp() {
-  console.log(chalk.bold('Jarvis v1 — Assistente de Commit'));
-  console.log('');
-  console.log('Comandos:');
-  console.log(`  ${chalk.green('jarvis commit')}                       Gera mensagem de commit com IA`);
-  console.log(`  ${chalk.green('jarvis merge [origem] [destino]')}       Faz merge entre branches`);
-  console.log(`  ${chalk.green('jarvis status')}                       Mostra status do repositório`);
-  console.log(`  ${chalk.green('jarvis branch list')}                  Lista branches locais`);
-  console.log(`  ${chalk.green('jarvis branch create <nome>')}         Cria uma nova branch`);
-  console.log(`  ${chalk.green('jarvis branch switch <nome>')}         Troca para uma branch`);
-  console.log('');
-  console.log(`  ${chalk.green('jarvis pr list')}                      Lista PRs abertas`);
-  console.log(`  ${chalk.green('jarvis pr view <n>')}                  Detalhes de uma PR`);
-  console.log(`  ${chalk.green('jarvis pr diff <n>')}                  Diff de uma PR`);
-  console.log(`  ${chalk.green('jarvis pr review <n>')}                Revisão com IA`);
-  console.log(`  ${chalk.green('jarvis pr checkout <n>')}              Fazer checkout da branch da PR`);
-  console.log(`  ${chalk.green('jarvis pr approve <n>')}               Aprovar PR`);
-  console.log(`  ${chalk.green('jarvis pr request-changes <n>')}       Solicitar alterações`);
-  console.log(`  ${chalk.green('jarvis pr comment <n>')}               Comentar em uma PR`);
-  console.log(`  ${chalk.green('jarvis pr merge <n>')}                 Fazer merge da PR`);
-  console.log(`  ${chalk.green('jarvis pr close <n>')}                 Fechar PR sem merge`);
-  console.log('');
-  console.log(`Branch protegida: ${chalk.yellow(PROTECTED_BRANCH)}`);
-  console.log('Execute dentro de um repositório Git.');
+  printBanner();
+
+  const commands = [
+    ['jarvis init', 'Inicializa um repositório Git'],
+    ['jarvis ignore', 'Gerencia lista de ignore (IA + manual)'],
+    ['jarvis history', 'Histórico de commits/pushes do Jarvis'],
+    ['jarvis commit', 'Gera mensagem de commit com IA'],
+    ['jarvis merge [origem] [destino]', 'Merge entre branches (dev → main)'],
+    ['jarvis status', 'Mostra status do repositório'],
+    ['jarvis branch list', 'Lista branches locais'],
+    ['jarvis branch create <nome>', 'Cria uma nova branch'],
+    ['jarvis branch switch <nome>', 'Troca para uma branch'],
+    ['jarvis pr list', 'Lista PRs abertas'],
+    ['jarvis pr view <n>', 'Detalhes de uma PR'],
+    ['jarvis pr diff <n>', 'Diff de uma PR'],
+    ['jarvis pr review <n>', 'Revisão com IA'],
+    ['jarvis pr checkout <n>', 'Checkout da branch da PR'],
+    ['jarvis pr approve <n>', 'Aprovar PR'],
+    ['jarvis pr request-changes <n>', 'Solicitar alterações'],
+    ['jarvis pr comment <n>', 'Comentar em uma PR'],
+    ['jarvis pr merge <n>', 'Fazer merge da PR'],
+    ['jarvis pr close <n>', 'Fechar PR sem merge'],
+  ];
+
+  const body = commands
+    .map(([cmd, desc]) => `${chalk.green(cmd.padEnd(36))} ${muted(desc)}`)
+    .join('\n');
+
+  printBox(body, { title: 'comandos' });
+
+  dim(`  Branch protegida: ${chalk.yellow(PROTECTED_BRANCH)}`);
+  dim('  Sem git? Rode jarvis init nesta pasta.');
+  dim('  Ignore: defaults + .jarvisignore (veja .jarvisignore.example)');
+  blank();
 }
