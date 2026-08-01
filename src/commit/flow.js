@@ -6,6 +6,8 @@ import { askAI } from '../ai/client.js';
 import { getCurrentBranch, hasUncommittedChanges, switchBranch, getPushRemote } from '../git/branch.js';
 import { PROTECTED_BRANCH, DEVELOPMENT_BRANCH } from '../config/branches.js';
 import { appendHistory } from '../history/store.js';
+import { loadProfile } from '../config/profile.js';
+import { buildSignature } from './signature.js';
 import { confirm, input, select } from '@inquirer/prompts';
 import { execFileSync } from 'node:child_process';
 import {
@@ -205,6 +207,13 @@ export async function runCommitFlow() {
         process.exit(1);
       }
     }
+  }
+
+  // Adicionar assinatura
+  const profile = loadProfile();
+  const signature = buildSignature(profile);
+  if (signature) {
+    message = message + '\n\n' + signature;
   }
 
   info(`Executando git add em ${safe.length} arquivo(s) (respeitando ignore)...`);

@@ -16,6 +16,7 @@ import { PROTECTED_BRANCH, DEVELOPMENT_BRANCH } from './config/branches.js';
 import { runIgnoreMenu } from './ignore/menu.js';
 import { runHistoryView } from './history/view.js';
 import { confirm } from '@inquirer/prompts';
+import { execSync } from 'node:child_process';
 import {
   printBanner,
   printBox,
@@ -28,10 +29,14 @@ import {
   blank,
   section,
   showLoading,
+  spinner,
   chalk,
   accent,
   muted,
 } from './ui.js';
+import { loadProfile, saveProfile, deleteProfile } from './config/profile.js';
+import { fetchGitHubUser } from './github/user.js';
+import { GITHUB_TOKEN } from './config/env.js';
 
 const command = process.argv[2];
 const subcommand = process.argv[3];
@@ -63,6 +68,10 @@ async function main() {
       durationMs: 700,
     });
     await runMergeFlow(subcommand || null, arg || null);
+  } else if (command === 'pull') {
+    await runPull();
+  } else if (command === 'update') {
+    await runUpdate();
   } else if (command === 'status') {
     await showLoading('Lendo repositório', {
       steps: ['Checando git', 'Coletando status'],
@@ -77,12 +86,107 @@ async function main() {
     await handleBranchCommand(subcommand, arg);
   } else if (command === 'pr') {
     await handlePrCommand(subcommand, arg);
+  } else if (command === 'profile') {
+    await handleProfileCommand(subcommand);
   } else {
     await showLoading('Inicializando Jarvis', {
       steps: ['Boot', 'Carregando comandos', 'Pronto'],
       durationMs: 800,
     });
     showHelp();
+  }
+}
+
+// ─── Pull ─────────────────────────────────────────────────
+
+async function runPull() {
+  if (!isGitRepo()) {
+    error('Este diretório não é um repositório Git.');
+    process.exit(1);
+  }
+
+  const branch = getCurrentBranch();
+
+  if (hasUncommittedChanges()) {
+    warn('Existem alterações não commitadas.');
+    const proceed = await confirm({
+      message: 'Fazer pull mesmo assim? (pode causar conflitos)',
+      default: false,
+    });
+    if (!proceed) {
+      info('Pull cancelado.');
+      return;
+    }
+  }
+
+  await showLoading('Atualizando repositório', {
+    steps: [`Fetch em ${branch}`, 'Baixando alterações', 'Aplicando'],
+    durationMs: 600,
+  });
+
+  try {
+    const output = execSync('git pull', { encoding: 'utf-8', stdio: 'pipe' });
+    success('Repositório atualizado!');
+    if (output.trim()) {
+      dim(output.trim());
+    }
+  } catch (err) {
+    error(`Falha no pull: ${err.stderr?.trim() || err.message}`);
+    process.exit(1);
+  }
+}
+
+// ─── Update ───────────────────────────────────────────────
+
+async function runUpdate() {
+  // Só faz sentido na pasta do Jarvis
+  printBanner();
+  info('Atualizando o Jarvis...');
+
+  // 1. Pull
+  if (isGitRepo()) {
+    if (hasUncommittedChanges()) {
+      warn('Existem alterações não commitadas no Jarvis.');
+      const proceed = await confirm({
+        message: 'Continuar mesmo assim?',
+        default: false,
+      });
+      if (!proceed) {
+        info('Update cancelado.');
+        return;
+      }
+    }
+
+    await showLoading('Baixando atualizações', {
+      steps: ['git pull', 'Verificando dependências'],
+      durationMs: 600,
+    });
+
+    try {
+      execSync('git pull', { encoding: 'utf-8', stdio: 'inherit' });
+    } catch (err) {
+      error(`Falha no git pull: ${err.stderr?.trim() || err.message}`);
+      process.exit(1);
+    }
+  }
+
+  // 2. npm install
+  await showLoading('Instalando dependências', {
+    steps: ['npm install', 'Atualizando pacotes'],
+    durationMs: 800,
+  });
+
+  try {
+    execSync('npm install', { encoding: 'utf-8', stdio: 'inherit' });
+    success('Jarvis atualizado com sucesso!');
+    blank();
+    printBox(
+      `${chalk.green('jarvis --help')}   veja os comandos disponíveis`,
+      { title: ' pronto ' }
+    );
+  } catch (err) {
+    error(`Falha no npm install: ${err.stderr?.trim() || err.message}`);
+    process.exit(1);
   }
 }
 
@@ -365,6 +469,237 @@ async function switchBranchCmd(name) {
   }
 }
 
+// ─── Profile commands ──────────────────────────────────────
+
+async function handleProfileCommand(sub) {
+  if (!sub || sub === 'show') {
+    showProfile();
+  } else if (sub === 'setup') {
+    await setupProfile();
+  } else if (sub === 'sync') {
+    await syncProfile();
+  } else if (sub === 'edit') {
+    await editProfile();
+  } else if (sub === 'reset') {
+    await resetProfile();
+  } else {
+    error(`Subcomando desconhecido: ${sub}`);
+    dim('Use: setup, show, sync, edit, reset');
+    process.exit(1);
+  }
+}
+
+function showProfile() {
+  const profile = loadProfile();
+
+  if (!profile) {
+    info('Nenhum perfil configurado.');
+    dim('Execute: jarvis profile setup');
+    return;
+  }
+
+  blank();
+  const body = [
+    `${chalk.bold('Nome')}      ${profile.name || muted('não configurado')}`,
+    `${chalk.bold('GitHub')}    ${profile.githubUsername ? accent('@' + profile.githubUsername) : muted('não configurado')}`,
+    `${chalk.bold('Assinatura')} ${profile.signatureEnabled ? chalk.green('ativada') : muted('desativada')}`,
+    `${chalk.bold('Origem')}    ${profile.source || 'manual'}`,
+    `${chalk.bold('Atualizado')} ${profile.updatedAt ? new Date(profile.updatedAt).toLocaleString('pt-BR') : '-'}`,
+  ].join('\n');
+
+  printBox(body, { title: 'perfil do jarvis' });
+  blank();
+}
+
+async function setupProfile() {
+  printBanner();
+  info('Configuração do perfil do Jarvis');
+
+  let name = null;
+  let githubUsername = null;
+  let source = 'manual';
+
+  // Tentar GitHub API
+  if (GITHUB_TOKEN) {
+    const spin = spinner('Procurando informações do desenvolvedor...');
+    spin.start();
+    try {
+      const ghUser = await fetchGitHubUser();
+      spin.succeed('Usuário encontrado no GitHub');
+      name = ghUser.name;
+      githubUsername = ghUser.githubUsername;
+      source = 'github';
+
+      blank();
+      printBox(
+        `${chalk.bold('Nome')}      ${name}\n${chalk.bold('GitHub')}    ${accent('@' + githubUsername)}`,
+        { title: 'dados do github' }
+      );
+
+      const useGitHub = await confirm({
+        message: 'Deseja usar essas informações?',
+        default: true,
+      });
+
+      if (!useGitHub) {
+        name = null;
+        githubUsername = null;
+        source = 'manual';
+      }
+    } catch (err) {
+      spin.fail('Não foi possível acessar a conta do GitHub.');
+      dim('Verifique seu GITHUB_TOKEN e conexão com a internet.');
+    }
+  }
+
+  // Fallback para git config
+  if (!name) {
+    info('Tentando usar a configuração do Git...');
+    try {
+      const gitName = execSync('git config user.name', { encoding: 'utf-8' }).trim();
+      const gitEmail = execSync('git config user.email', { encoding: 'utf-8' }).trim();
+
+      if (gitName) {
+        blank();
+        printBox(
+          `${chalk.bold('Nome')}      ${gitName}\n${chalk.bold('Email')}    ${gitEmail}`,
+          { title: 'dados do git' }
+        );
+
+        const useGit = await confirm({
+          message: 'Deseja usar essas informações?',
+          default: true,
+        });
+
+        if (useGit) {
+          name = gitName;
+          source = 'git';
+        }
+      }
+    } catch {
+      // git config falhou
+    }
+  }
+
+  // Se nada funcionou, pedir manualmente
+  if (!name) {
+    warn('Não foi possível identificar o desenvolvedor automaticamente.');
+    blank();
+
+    name = await input({
+      message: 'Informe seu nome:',
+      validate: (v) => v.trim().length > 0 ? true : 'Nome é obrigatório.',
+    });
+
+    githubUsername = await input({
+      message: 'Informe seu usuário do GitHub (opcional):',
+    });
+  }
+
+  // Perguntar username se veio do git e não tem
+  if (!githubUsername) {
+    githubUsername = await input({
+      message: 'Informe seu usuário do GitHub (ex: Yurilxm):',
+      default: githubUsername || '',
+    });
+  }
+
+  const profile = {
+    name: name.trim(),
+    githubUsername: githubUsername.trim() || null,
+    signatureEnabled: true,
+    source,
+  };
+
+  saveProfile(profile);
+  success('Perfil salvo com sucesso!');
+  showProfile();
+}
+
+async function syncProfile() {
+  if (!GITHUB_TOKEN) {
+    error('GITHUB_TOKEN não configurado. Não é possível sincronizar.');
+    return;
+  }
+
+  const currentProfile = loadProfile();
+
+  info('Sincronizando perfil com o GitHub...');
+
+  try {
+    const ghUser = await fetchGitHubUser();
+    const profile = {
+      ...(currentProfile || {}),
+      name: ghUser.name,
+      githubUsername: ghUser.githubUsername,
+      source: 'github',
+    };
+    saveProfile(profile);
+    success('Perfil atualizado!');
+    showProfile();
+  } catch (err) {
+    warn('Não foi possível sincronizar com o GitHub.');
+    if (currentProfile) {
+      dim('O perfil local atual será mantido.');
+    }
+  }
+}
+
+async function editProfile() {
+  const current = loadProfile() || {};
+
+  blank();
+  const name = await input({
+    message: 'Nome:',
+    default: current.name || '',
+  });
+
+  const githubUsername = await input({
+    message: 'GitHub username:',
+    default: current.githubUsername || '',
+  });
+
+  const sigEnabled = await confirm({
+    message: 'Assinatura ativada?',
+    default: current.signatureEnabled !== false,
+  });
+
+  const profile = {
+    ...current,
+    name: name.trim(),
+    githubUsername: githubUsername.trim() || null,
+    signatureEnabled: sigEnabled,
+    source: current.source || 'manual',
+  };
+
+  saveProfile(profile);
+  success('Perfil atualizado!');
+  showProfile();
+}
+
+async function resetProfile() {
+  const current = loadProfile();
+  if (!current) {
+    info('Nenhum perfil para remover.');
+    return;
+  }
+
+  warn('Isso removerá o perfil local do Jarvis.');
+
+  const confirmed = await confirm({
+    message: 'Deseja continuar?',
+    default: false,
+  });
+
+  if (!confirmed) {
+    info('Cancelado.');
+    return;
+  }
+
+  deleteProfile();
+  success('Perfil removido.');
+}
+
 // ─── Help ─────────────────────────────────────────────────
 
 function showHelp() {
@@ -372,8 +707,15 @@ function showHelp() {
 
   const commands = [
     ['jarvis init', 'Inicializa um repositório Git'],
+    ['jarvis profile setup', 'Configura perfil do desenvolvedor'],
+    ['jarvis profile show', 'Mostra perfil atual'],
+    ['jarvis profile sync', 'Sincroniza perfil com GitHub'],
+    ['jarvis profile edit', 'Edita perfil manualmente'],
+    ['jarvis profile reset', 'Remove perfil local'],
     ['jarvis ignore', 'Gerencia lista de ignore (IA + manual)'],
     ['jarvis history', 'Histórico de commits/pushes do Jarvis'],
+    ['jarvis pull', 'Atualiza a branch atual (git pull)'],
+    ['jarvis update', 'Atualiza o Jarvis (pull + npm install)'],
     ['jarvis commit', 'Gera mensagem de commit com IA'],
     ['jarvis merge [origem] [destino]', 'Merge entre branches (dev → main)'],
     ['jarvis status', 'Mostra status do repositório'],
