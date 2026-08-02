@@ -38,6 +38,8 @@ import { loadProfile, saveProfile, deleteProfile } from './config/profile.js';
 import { fetchGitHubUser } from './github/user.js';
 import { GITHUB_TOKEN } from './config/env.js';
 import { jiraList, jiraView, jiraStatus, jiraMove, jiraCreate } from './jira/flow.js';
+import { runReviewFlow } from './review/flow.js';
+import { runDocsFlow } from './docs/flow.js';
 
 
 const command = process.argv[2];
@@ -92,6 +94,20 @@ async function main() {
     await handleProfileCommand(subcommand);
   } else if (command === 'jira') {
     await handleJiraCommand(subcommand, arg);
+  } else if (command === 'review') {
+    const validScopes = ['staged'];
+    if (subcommand && !validScopes.includes(subcommand)) {
+      warn(`Subcomando '${subcommand}' desconhecido. Usando padrão: todas as alterações.`);
+    }
+    const scope = subcommand === 'staged' ? 'staged' : 'all';
+    await runReviewFlow(scope);
+  } else if (command === 'docs') {
+    const validTypes = ['changelog'];
+    if (subcommand && !validTypes.includes(subcommand)) {
+      warn(`Subcomando '${subcommand}' desconhecido. Usando padrão: README.`);
+    }
+    const type = subcommand === 'changelog' ? 'changelog' : 'readme';
+    await runDocsFlow(type);
   } else {
     await showLoading('Inicializando Jarvis', {
       steps: ['Boot', 'Carregando comandos', 'Pronto'],
@@ -779,6 +795,15 @@ function showHelp() {
         ['jarvis branch list', 'Lista branches locais'],
         ['jarvis branch create <nome>', 'Cria uma nova branch'],
         ['jarvis branch switch <nome>', 'Troca para uma branch'],
+      ]
+    },
+    {
+      title: 'review & docs',
+      commands: [
+        ['jarvis review', 'Revisa alterações com IA (somente leitura)'],
+        ['jarvis review staged', 'Revisa apenas o que está staged'],
+        ['jarvis docs', 'Gera/atualiza README.md com IA'],
+        ['jarvis docs changelog', 'Gera/atualiza CHANGELOG.md com IA'],
       ]
     },
     {

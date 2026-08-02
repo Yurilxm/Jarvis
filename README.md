@@ -1,6 +1,6 @@
 # 🤖 Jarvis Dev
 
-Assistente de desenvolvimento por linha de comando — commits inteligentes, gestão de branches, Pull Requests do GitHub, integração com Jira e muito mais.
+Assistente de desenvolvimento por linha de comando — commits inteligentes, gestão de branches, Pull Requests do GitHub, integração com Jira, revisão de código com IA e geração de documentação.
 
 **Versão:** 1.3.0
 
@@ -12,10 +12,22 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Fluxo interativo para aprovar, editar, gerar novamente ou cancelar
 - Adiciona assinatura automática no corpo do commit
 
+### Revisão de código com IA
+- Analisa alterações locais (todas ou apenas *staged*) usando IA em modo somente leitura
+- Identifica potenciais problemas, riscos e sugere melhorias antes do commit
+- Nunca modifica código — apenas imprime a análise no terminal
+
+### Documentação automática
+- Gera ou atualiza `README.md` do projeto usando IA
+- Gera ou atualiza `CHANGELOG.md` com base nas alterações
+- Mostra diff visual do que será alterado antes de salvar
+- Fluxo de aprovação igual ao commit (aprovar, editar, gerar novamente ou cancelar)
+
 ### Gestão de branches
 - `main` protegida, com confirmação extra
 - `dev` como branch de desenvolvimento padrão
 - Criação, listagem e troca de branches com verificações de segurança
+- Sugere criar branch quando tenta trocar para uma inexistente
 
 ### Pull Requests do GitHub
 - Lista, visualiza e revisa Pull Requests com IA
@@ -30,6 +42,7 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Cria novas tasks com suporte a IA para título e descrição
 - Atribuição dinâmica de responsáveis (busca da API do Jira)
 - Cria branches automaticamente ao iniciar uma issue
+- Configuração por projeto via `.jarvis-dev.json` (sem hardcode)
 
 ### Segurança
 - Nenhuma ação destrutiva é executada sem confirmação
@@ -70,6 +83,15 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 | `jarvis branch list` | Lista as branches locais |
 | `jarvis branch create <nome>` | Cria uma nova branch |
 | `jarvis branch switch <nome>` | Troca para outra branch |
+
+**Revisão e Documentação**
+
+| Comando | Descrição |
+|---|---|
+| `jarvis review` | Revisa alterações com IA (somente leitura) |
+| `jarvis review staged` | Revisa apenas o que está staged |
+| `jarvis docs` | Gera/atualiza README.md com IA |
+| `jarvis docs changelog` | Gera/atualiza CHANGELOG.md com IA |
 
 **Pull Requests**
 
@@ -247,6 +269,13 @@ jarvis commit
 ```
 
 O Jarvis vai: verificar a branch atual → analisar o status do repositório → coletar as alterações → sanitizar informações sensíveis → enviar o conteúdo seguro para a Gemini API → gerar uma mensagem no padrão Conventional Commits → exibir para aprovação → permitir aprovar, editar, gerar novamente ou cancelar → commitar após confirmação → perguntar se deve fazer push.
+
+**Revisão de código**
+
+```bash
+jarvis review
+jarvis review staged
+```
 
 **Revisar uma Pull Request**
 
