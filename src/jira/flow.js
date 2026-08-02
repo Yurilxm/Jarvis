@@ -1,7 +1,8 @@
-import { listIssues, getIssue, getTransitions, transitionIssue } from './client.js';
-import { getJiraConfig } from '../config/jira.js';
+import { listIssues, getIssue, getTransitions, transitionIssue, createIssue } from './client.js';
+import { getJiraConfig, getJiraBaseUrl, getJiraAuthHeader } from '../config/jira.js';
 import { confirm, input, select } from '@inquirer/prompts';
 import { execSync } from 'node:child_process';
+import { askAI } from '../ai/client.js';
 import {
   printBanner,
   printBox,
@@ -19,23 +20,115 @@ import {
 } from '../ui.js';
 
 function requireConfig() {
-  getJiraConfig(); // valida se existe, senão encerra
+  getJiraConfig();
+}
+
+// ─── ADF → texto formatado ──────────────────────────────────
+
+/**
+ * Converte um documento ADF (Atlassian Document Format) em texto legível,
+ * preservando parágrafos, listas com bullet e listas numeradas.
+ * @param {object} adf
+ * @returns {string}
+ */
+function adfToText(adf) {
+  if (!adf || !adf.content) return '';
+
+  function renderNode(node, indent = 0, listInfo = null) {
+    if (!node) return '';
+
+    switch (node.type) {
+      case 'text':
+        return node.text || '';
+
+      case 'hardBreak':
+        return '\n';
+
+      case 'paragraph': {
+        const text = (node.content || []).map(n => renderNode(n)).join('');
+        return text;
+      }
+
+      case 'heading': {
+        const text = (node.content || []).map(n => renderNode(n)).join('');
+        return chalk ? text : text;
+      }
+
+      case 'bulletList': {
+        return (node.content || [])
+          .map(item => renderNode(item, indent + 1, { type: 'bullet' }))
+          .join('\n');
+      }
+
+      case 'orderedList': {
+        return (node.content || [])
+          .map((item, i) => renderNode(item, indent + 1, { type: 'ordered', index: i + 1 }))
+          .join('\n');
+      }
+
+      case 'listItem': {
+        const prefix = '  '.repeat(indent - 1) + (
+          listInfo?.type === 'ordered' ? `${listInfo.index}. ` : '• '
+        );
+        const text = (node.content || [])
+          .map(n => renderNode(n, indent))
+          .join('\n');
+        return prefix + text.trim();
+      }
+
+      case 'codeBlock': {
+        const text = (node.content || []).map(n => renderNode(n)).join('');
+        return text;
+      }
+
+      case 'blockquote': {
+        const text = (node.content || []).map(n => renderNode(n, indent)).join('\n');
+        return text
+          .split('\n')
+          .map(line => `  ${line}`)
+          .join('\n');
+      }
+
+      default:
+        if (node.content) {
+          return node.content.map(n => renderNode(n, indent, listInfo)).join('');
+        }
+        return '';
+    }
+  }
+
+  const blocks = adf.content.map(node => renderNode(node));
+  return blocks.filter(b => b.trim() !== '').join('\n\n');
 }
 
 // ─── list ─────────────────────────────────────────────────
 
-export async function jiraList() {
+export async function jiraList(filter = 'active') {
   requireConfig();
 
-  const spin = spinner('Buscando issues...');
+  let jql = 'project=SDG ORDER BY updated DESC';
+  let label = '';
+
+  if (filter === 'done') {
+    jql = 'project=SDG AND status in (Done,Concluído) ORDER BY updated DESC';
+    label = 'concluídas';
+  } else if (filter === 'all') {
+    jql = 'project=SDG ORDER BY updated DESC';
+    label = 'todas';
+  } else {
+    jql = 'project=SDG AND status not in (Done,Closed,Cancelled,Concluído) ORDER BY updated DESC';
+    label = 'ativas';
+  }
+
+  const spin = spinner(`Buscando issues ${label}...`);
   spin.start();
 
   try {
-    const data = await listIssues();
-    spin.succeed(`${data.issues?.length || 0} issues encontradas`);
+    const data = await listIssues(jql);
+    spin.succeed(`${data.issues?.length || 0} issues ${label} encontradas`);
 
     if (!data.issues || data.issues.length === 0) {
-      info('Nenhuma issue ativa atribuída a você.');
+      info(`Nenhuma issue ${label}.`);
       return;
     }
 
@@ -46,11 +139,13 @@ export async function jiraList() {
       const status = issue.fields.status.name;
       const priority = issue.fields.priority?.name || '-';
       const type = issue.fields.issuetype.name;
+      const assignee = issue.fields.assignee?.displayName || 'Não atribuído';
 
-      const statusColor = status === 'In Progress' ? chalk.yellow : muted;
+      const isInProgress = status === 'In Progress' || status === 'Em andamento';
+      const statusColor = isInProgress ? chalk.yellow : muted;
 
       console.log(`  ${chalk.green(key)}  ${chalk.bold(summary)}`);
-      console.log(muted(`     ${type} · ${statusColor(status)} · Prioridade: ${priority}`));
+      console.log(muted(`     ${type} · ${statusColor(status)} · Prioridade: ${priority} · ${assignee}`));
       console.log('');
     }
   } catch (err) {
@@ -73,25 +168,37 @@ export async function jiraView(issueKey) {
 
     const { fields } = issue;
 
-    blank();
-    printBox(
-      [
-        `${chalk.bold('Título')}      ${fields.summary}`,
-        `${chalk.bold('Status')}      ${fields.status.name}`,
-        `${chalk.bold('Prioridade')}  ${fields.priority?.name || '-'}`,
-        `${chalk.bold('Tipo')}        ${fields.issuetype.name}`,
-        `${chalk.bold('Responsável')} ${fields.assignee?.displayName || 'Não atribuído'}`,
-        `${chalk.bold('Repórter')}    ${fields.reporter?.displayName || '-'}`,
-        `${chalk.bold('Criado em')}   ${new Date(fields.created).toLocaleString('pt-BR')}`,
-        `${chalk.bold('Atualizado')}  ${new Date(fields.updated).toLocaleString('pt-BR')}`,
-      ].join('\n'),
-      { title: `${issueKey} · ${fields.issuetype.name}` }
-    );
-
+    // Extrai texto da descrição (ADF ou string), preservando listas e parágrafos
+    let descText = '';
     if (fields.description) {
-      blank();
-      dim(fields.description.substring(0, 500));
+      if (typeof fields.description === 'string') {
+        descText = fields.description;
+      } else if (fields.description.content) {
+        descText = adfToText(fields.description);
+      }
     }
+
+    const info = [
+      `${chalk.bold('Título')}      ${fields.summary}`,
+      `${chalk.bold('Status')}      ${fields.status.name}`,
+      `${chalk.bold('Prioridade')}  ${fields.priority?.name || '-'}`,
+      `${chalk.bold('Tipo')}        ${fields.issuetype.name}`,
+      `${chalk.bold('Responsável')} ${fields.assignee?.displayName || 'Não atribuído'}`,
+      `${chalk.bold('Repórter')}    ${fields.reporter?.displayName || '-'}`,
+      `${chalk.bold('Criado em')}   ${new Date(fields.created).toLocaleString('pt-BR')}`,
+      `${chalk.bold('Atualizado')}  ${new Date(fields.updated).toLocaleString('pt-BR')}`,
+    ];
+
+    info.push('');
+    info.push(`${chalk.bold('Descrição')}`);
+    if (descText) {
+      info.push(muted(descText));
+    } else {
+      info.push(muted('Nenhuma descrição.'));
+    }
+
+    blank();
+    printBox(info.join('\n'), { title: `${issueKey} · ${fields.issuetype.name}` });
 
     blank();
   } catch (err) {
@@ -169,7 +276,6 @@ export async function jiraMove(issueKey) {
     await transitionIssue(issueKey, choice);
     spin.succeed(`${issueKey} movida com sucesso!`);
 
-    // Se moveu para "In Progress", pergunta se quer criar branch
     const chosenTransition = transitions.transitions.find(t => t.id === choice);
     if (chosenTransition && chosenTransition.to.name.toLowerCase().includes('andamento')) {
       const shouldBranch = await confirm({
@@ -195,6 +301,183 @@ export async function jiraMove(issueKey) {
       }
     }
   } catch (err) {
+    error(err.message);
+  }
+}
+
+// ─── create ────────────────────────────────────────────────
+
+export async function jiraCreate() {
+  requireConfig();
+
+  printBanner();
+  info('Criar nova task no Jira');
+
+  // ── Título (com sugestão da IA) ──────────────────────────
+  const useAIForTitle = await confirm({
+    message: 'Usar IA para sugerir título e descrição?',
+    default: false,
+  });
+
+  let summary = '';
+  let description = '';
+
+  if (useAIForTitle) {
+    const ideia = await input({
+      message: 'Descreva a ideia da task em poucas palavras:',
+      validate: (v) => v.trim().length > 0 ? true : 'Descreva a ideia.',
+    });
+
+    const aiSpin = spinner('Gerando título e descrição com IA...');
+    aiSpin.start();
+    try {
+      const prompt = `Você é um assistente de projeto. Com base na ideia abaixo, gere um título curto (máx 100 caracteres) e uma descrição detalhada (2-3 frases) para uma task do Jira.
+
+Ideia: ${ideia}
+
+Formato da resposta:
+TÍTULO: <título aqui>
+DESCRIÇÃO: <descrição aqui>`;
+
+      const response = await askAI(prompt);
+      const titleMatch = response.match(/TÍTULO:\s*(.+)/);
+      const descMatch = response.match(/DESCRIÇÃO:\s*([\s\S]+)/);
+
+      summary = titleMatch ? titleMatch[1].trim() : ideia;
+      description = descMatch ? descMatch[1].trim() : '';
+
+      aiSpin.succeed('Sugestão gerada pela IA');
+    } catch {
+      aiSpin.fail('IA indisponível, usando ideia como título');
+      summary = ideia;
+    }
+  }
+
+  if (!summary) {
+    summary = await input({
+      message: 'Título da task:',
+      validate: (v) => v.trim().length > 0 ? true : 'Título é obrigatório.',
+    });
+  }
+
+  if (!description) {
+    description = await input({
+      message: 'Descrição (opcional):',
+    });
+  }
+
+  // ── Designar responsável ────────────────────────────────
+  const assignToMe = await confirm({
+    message: 'Atribuir a você?',
+    default: true,
+  });
+
+  let assigneeId = null;
+  if (assignToMe) {
+    assigneeId = '712020:8ffe9f52-28f1-42f9-9b58-7cfcde227452';
+  } else {
+    const assignChoice = await select({
+      message: 'Atribuir para:',
+      choices: [
+        { name: 'Kayo Macedo', value: '712020:88794803-d378-456d-9bab-ed8edf2bb1ed' },
+        { name: 'Fellipe Vaz', value: '712020:a9eec217-fb87-4ad3-b96f-2db7ae6f9f62' },
+        { name: 'Não atribuir', value: null },
+      ],
+    });
+    assigneeId = assignChoice;
+  }
+
+  // ── Status inicial ──────────────────────────────────────
+  const initialStatus = await select({
+    message: 'Status inicial:',
+    choices: [
+      { name: 'Tarefas pendentes (To Do)', value: 'todo' },
+      { name: 'Em andamento (In Progress)', value: 'inprogress' },
+      { name: 'Concluído (Done)', value: 'done' },
+    ],
+  });
+
+  const confirmed = await confirm({
+    message: 'Criar task?',
+    default: true,
+  });
+
+  if (!confirmed) {
+    info('Cancelado.');
+    return;
+  }
+
+  const spin = spinner('Criando task...');
+  spin.start();
+
+  try {
+    const typesResp = await fetch(
+      `${getJiraBaseUrl()}/rest/api/3/issue/createmeta/10033/issuetypes`,
+      { headers: { 'Authorization': getJiraAuthHeader(), 'Accept': 'application/json' } }
+    );
+    const typesData = await typesResp.json();
+    const tarefaType = typesData.issueTypes.find(t => t.name === 'Tarefa');
+
+    if (!tarefaType) {
+      throw new Error('Nenhum tipo "Tarefa" disponível para este projeto.');
+    }
+
+    const issue = await createIssue('10033', summary.trim(), description.trim() || undefined, tarefaType.id, assigneeId);
+    spin.succeed(`Task ${issue.key} criada com sucesso!`);
+
+    blank();
+    printBox(
+      `${chalk.bold(issue.key)} — ${summary}`,
+      { title: 'task criada' }
+    );
+
+    // Mover para o status escolhido
+    if (initialStatus !== 'todo') {
+      const transitions = await getTransitions(issue.key);
+      let targetTransition;
+
+      if (initialStatus === 'inprogress') {
+        targetTransition = transitions.transitions?.find(
+          t => t.to.name.toLowerCase().includes('andamento')
+        );
+      } else if (initialStatus === 'done') {
+        targetTransition = transitions.transitions?.find(
+          t => t.to.name.toLowerCase().includes('concluído') || t.to.name.toLowerCase().includes('done')
+        );
+      }
+
+      if (targetTransition) {
+        await transitionIssue(issue.key, targetTransition.id);
+        success(`Task ${issue.key} movida para "${targetTransition.to.name}"!`);
+      }
+    }
+
+    // Criar branch se foi para "Em andamento"
+    if (initialStatus === 'inprogress') {
+      const shouldBranch = await confirm({
+        message: `Criar branch feature/${issue.key}-descricao?`,
+        default: false,
+      });
+
+      if (shouldBranch) {
+        const branchSuffix = await input({
+          message: 'Descrição curta para a branch:',
+          default: issue.key.toLowerCase(),
+          validate: (v) => v.trim().length > 0 ? true : 'Informe uma descrição.',
+        });
+
+        const branchName = `feature/${issue.key}-${branchSuffix.replace(/\s+/g, '-').toLowerCase()}`;
+
+        try {
+          execSync(`git checkout -b ${branchName}`, { encoding: 'utf-8', stdio: 'inherit' });
+          success(`Branch '${branchName}' criada!`);
+        } catch (err) {
+          error(`Erro ao criar branch: ${err.message}`);
+        }
+      }
+    }
+  } catch (err) {
+    spin.fail('Erro ao criar task');
     error(err.message);
   }
 }

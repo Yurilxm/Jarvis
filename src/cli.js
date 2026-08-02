@@ -37,7 +37,7 @@ import {
 import { loadProfile, saveProfile, deleteProfile } from './config/profile.js';
 import { fetchGitHubUser } from './github/user.js';
 import { GITHUB_TOKEN } from './config/env.js';
-import { jiraList, jiraView, jiraStatus, jiraMove } from './jira/flow.js';
+import { jiraList, jiraView, jiraStatus, jiraMove, jiraCreate } from './jira/flow.js';
 
 
 const command = process.argv[2];
@@ -708,7 +708,8 @@ async function resetProfile() {
 
 async function handleJiraCommand(sub, issueKey) {
   if (!sub || sub === 'list') {
-    await jiraList();
+    const filter = issueKey || 'active';
+    await jiraList(filter);
   } else if (sub === 'view') {
     if (!issueKey) { error('Chave da issue é obrigatória.'); process.exit(1); }
     await jiraView(issueKey);
@@ -718,9 +719,11 @@ async function handleJiraCommand(sub, issueKey) {
   } else if (sub === 'move') {
     if (!issueKey) { error('Chave da issue é obrigatória.'); process.exit(1); }
     await jiraMove(issueKey);
+  } else if (sub === 'create') {
+    await jiraCreate();
   } else {
     error(`Subcomando desconhecido: ${sub}`);
-    dim('Use: list, view <issue>, status <issue>, start <issue>, finish <issue>');
+    dim('Use: list [active|all|done], view <issue>, status <issue>, move <issue>, create');
     process.exit(1);
   }
 }
@@ -771,9 +774,10 @@ function showHelp() {
     {
       title: 'jira',
       commands: [
-        ['jarvis jira list', 'Lista issues do Jira'],
+        ['jarvis jira list [active|all|done]', 'Lista issues (ativas/todas/concluídas)'],
         ['jarvis jira view <issue>', 'Detalhes de uma issue'],
         ['jarvis jira move <issue>', 'Move issue para outro status'],
+        ['jarvis jira create', 'Cria nova task (com IA opcional)'],
       ]
     },
     {
