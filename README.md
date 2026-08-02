@@ -1,6 +1,6 @@
-# 🤖 Jarvis
+# 🤖 Jarvis Dev
 
-Assistente pessoal de automação por linha de comando — commits inteligentes, gestão de branches, Pull Requests do GitHub, integração com Jira e muito mais.
+Assistente de desenvolvimento por linha de comando — commits inteligentes, gestão de branches, Pull Requests do GitHub, integração com Jira e muito mais.
 
 **Versão:** 1.2.0
 
@@ -24,9 +24,11 @@ Assistente pessoal de automação por linha de comando — commits inteligentes,
 - Todas as ações importantes exigem confirmação explícita
 
 ### Integração com Jira
-- Lista issues atribuídas ao usuário
-- Exibe os detalhes de uma issue
+- Lista issues do projeto (ativas, todas ou concluídas)
+- Exibe detalhes de uma issue com descrição formatada
 - Move issues entre status (`To Do`, `In Progress`, `Done`)
+- Cria novas tasks com suporte a IA para título e descrição
+- Atribuição dinâmica de responsáveis (busca da API do Jira)
 - Cria branches automaticamente ao iniciar uma issue
 
 ### Segurança
@@ -34,7 +36,8 @@ Assistente pessoal de automação por linha de comando — commits inteligentes,
 - Proteção da branch `main`
 - Nenhum merge ou push é realizado automaticamente sem autorização
 - Dados sensíveis são sanitizados antes de serem enviados à IA
-- Lista de arquivos ignorados configurável via `.jarvisignore`
+- Arquivos sensíveis ignorados automaticamente, com regras adicionais via `.jarvisignore`
+- Nenhum ID de usuário, projeto ou configuração específica fica hardcoded no código
 
 ### Interface
 - Banner ASCII dinâmico com a versão atual
@@ -87,9 +90,10 @@ Assistente pessoal de automação por linha de comando — commits inteligentes,
 
 | Comando | Descrição |
 |---|---|
-| `jarvis jira list` | Lista as issues ativas do Jira |
+| `jarvis jira list [active\|all\|done]` | Lista issues do Jira por status |
 | `jarvis jira view <issue>` | Mostra os detalhes de uma issue |
 | `jarvis jira move <issue>` | Move uma issue para outro status |
+| `jarvis jira create` | Cria uma nova task (com IA opcional) |
 
 **Perfil**
 
@@ -125,19 +129,22 @@ Depois disso, o comando `jarvis` estará disponível em qualquer terminal e pode
 
 ## ⚙️ Configuração
 
-**1. Crie o arquivo `.env`**
+A configuração do Jarvis é dividida em duas partes:
+
+| Configuração | Arquivo | Conteúdo | Versiona no Git? |
+|---|---|---|---|
+| Usuário | `.env` | Chaves de API, tokens, credenciais | ❌ Nunca |
+| Projeto | `.jarvis-dev.json` | Projeto Jira, branches, convenções | ✅ Sim (se seguro) |
+
+**1. Configuração do usuário (`.env`)**
+
+Crie o arquivo `.env` na pasta de instalação do Jarvis:
 
 ```bash
 cp .env.example .env
 ```
 
-No Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-**2. Edite o arquivo `.env`**
+Edite com suas credenciais:
 
 ```env
 # Gemini API — obrigatória para funcionalidades de IA
@@ -153,11 +160,43 @@ GITHUB_TOKEN=ghp_seu-token
 JIRA_DOMAIN=sua-empresa.atlassian.net
 JIRA_EMAIL=seu-email@empresa.com
 JIRA_API_TOKEN=seu-token-jira
-
-# Nome de usuário do GitHub para assinatura — opcional
-# Também pode ser configurado com: jarvis profile setup
-JARVIS_GITHUB_USER=seu-username
 ```
+
+**2. Configuração do projeto (`.jarvis-dev.json`)**
+
+Na raiz de cada projeto onde quiser usar o Jarvis com Jira, crie:
+
+```json
+{
+  "jira": {
+    "projectKey": "SDG",
+    "projectId": "10033",
+    "issueType": "Tarefa"
+  },
+  "git": {
+    "protectedBranch": "main",
+    "developmentBranch": "dev"
+  }
+}
+```
+
+| Campo | Descrição | Exemplo |
+|---|---|---|
+| `jira.projectKey` | Chave do projeto no Jira | `"SDG"` |
+| `jira.projectId` | ID numérico do projeto | `"10033"` |
+| `jira.issueType` | Tipo de issue ao criar tasks | `"Tarefa"` |
+| `git.protectedBranch` | Branch protegida | `"main"` |
+| `git.developmentBranch` | Branch de desenvolvimento | `"dev"` |
+
+Se o arquivo `.jarvis-dev.json` não existir, os comandos Git funcionam normalmente. Apenas os comandos do Jira solicitarão a configuração.
+
+Como descobrir o `projectId`:
+
+```bash
+jarvis jira list
+```
+
+Se ainda não tiver o `.jarvis-dev.json`, o comando exibirá uma mensagem com instruções. Você também pode consultar o administrador do Jira ou verificar a URL ao acessar o projeto no navegador.
 
 **3. Configure o perfil do desenvolvedor (opcional)**
 
@@ -186,6 +225,7 @@ O Jarvis tentará identificar automaticamente os dados do desenvolvedor usando o
 - A branch `main` possui uma camada extra de proteção
 - Nenhuma ação destrutiva é executada sem confirmação explícita
 - O Jarvis não realiza stash automático nem resolve conflitos automaticamente
+- Nenhum ID de usuário, projeto ou configuração específica fica hardcoded no código
 
 > ⚠️ Nunca compartilhe ou publique os valores do seu arquivo `.env`.
 
@@ -218,12 +258,15 @@ jarvis pr approve 1
 jarvis pr merge 1
 ```
 
-**Gerenciar uma issue do Jira**
+**Gerenciar issues do Jira**
 
 ```bash
 jarvis jira list
+jarvis jira list all
+jarvis jira list done
 jarvis jira view SDG-68
 jarvis jira move SDG-68
+jarvis jira create
 ```
 
 **Iniciar um projeto novo**
@@ -257,6 +300,7 @@ Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar 
 | Jarvis não encontra o repositório Git | Execute o comando dentro de uma pasta com repositório Git |
 | Comando funciona, mas não encontra o `.env` | Verifique se o `.env` está na pasta de instalação do Jarvis |
 | Jira retorna erro de autenticação | Verifique `JIRA_DOMAIN`, `JIRA_EMAIL` e `JIRA_API_TOKEN` |
+| Jira pede configuração do projeto | Crie o arquivo `.jarvis-dev.json` na raiz do projeto |
 | GitHub retorna erro de permissão | Verifique as permissões do token e o acesso ao repositório |
 | Autocomplete não funciona | Execute novamente `. .\setup.ps1` no PowerShell |
 
@@ -265,13 +309,12 @@ Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar 
 | Versão | Funcionalidades |
 |---|---|
 | `v1.0` | Commits com IA, branches, merge, Pull Requests e interface |
-| `v1.1` | Assinatura automática nos commits |
-| `v1.2` | Integração com Jira e perfil do desenvolvedor |
-| `v2.x` | Configurações específicas por usuário e por projeto |
-| `v3.x` | Revisão de código e documentação automática |
-| `v4.x` | Controle básico do computador |
-| `v5.x` | Comandos de voz |
-| `v6.x` | Servidor doméstico e automação residencial |
+| `v1.1` | Assinatura automática nos commits e perfil do desenvolvedor |
+| `v1.2` | Integração com Jira e configuração por projeto (`.jarvis-dev.json`) |
+| `v2.x` | Revisão de código e documentação automática |
+| `v3.x` | Controle básico do computador |
+| `v4.x` | Comandos de voz |
+| `v5.x` | Servidor doméstico e automação residencial |
 
 ## 📝 Licença
 
