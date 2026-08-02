@@ -1,6 +1,7 @@
 ﻿# Dependências
 node_modules/
 
+# Ambiente
 .env
 
 # Histórico local do Jarvis

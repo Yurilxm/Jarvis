@@ -26,8 +26,9 @@ async function jiraRequest(endpoint, options = {}) {
   return response.json();
 }
 
-export async function listIssues(jql = 'project=SDG ORDER BY updated DESC') {
-  return jiraRequest(`/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=summary,status,priority,issuetype,assignee,reporter,created,updated`);
+export async function listIssues(projectKey, jql = null) {
+  const query = jql || `project=${projectKey} ORDER BY updated DESC`;
+  return jiraRequest(`/rest/api/3/search/jql?jql=${encodeURIComponent(query)}&fields=summary,status,priority,issuetype,assignee,reporter,created,updated`);
 }
 
 export async function getIssue(issueKey) {
@@ -40,6 +41,10 @@ export async function searchIssues(jql) {
 
 export async function getTransitions(issueKey) {
   return jiraRequest(`/rest/api/3/issue/${issueKey}/transitions`);
+}
+
+export async function getAssignableUsers(projectKey) {
+  return jiraRequest(`/rest/api/3/user/assignable/search?project=${projectKey}`);
 }
 
 export async function transitionIssue(issueKey, transitionId) {

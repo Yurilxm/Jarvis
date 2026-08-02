@@ -1,5 +1,6 @@
-import { listIssues, getIssue, getTransitions, transitionIssue, createIssue } from './client.js';
+import { listIssues, getIssue, getTransitions, transitionIssue, createIssue, getAssignableUsers } from './client.js';
 import { getJiraConfig, getJiraBaseUrl, getJiraAuthHeader } from '../config/jira.js';
+import { getProjectConfig } from '../config/project.js';
 import { confirm, input, select } from '@inquirer/prompts';
 import { execSync } from 'node:child_process';
 import { askAI } from '../ai/client.js';
@@ -19,18 +20,38 @@ import {
   muted,
 } from '../ui.js';
 
+// Cache em memória para lista de assignees (vive apenas durante a sessão)
+let assigneeCache = null;
+let assigneeCacheProject = null;
+
 function requireConfig() {
   getJiraConfig();
 }
 
-// ─── ADF → texto formatado ──────────────────────────────────
+function requireProjectConfig() {
+  const projectKey = getProjectConfig('jira.projectKey');
+  const projectId = getProjectConfig('jira.projectId');
+  if (!projectKey || !projectId) {
+    error('Integração com Jira não configurada neste projeto.');
+    dim('Crie um arquivo .jarvis-dev.json na raiz do projeto com:');
+    dim('  "jira": { "projectKey": "SDG", "projectId": "10033" }');
+    process.exit(1);
+  }
+  return { projectKey, projectId };
+}
 
-/**
- * Converte um documento ADF (Atlassian Document Format) em texto legível,
- * preservando parágrafos, listas com bullet e listas numeradas.
- * @param {object} adf
- * @returns {string}
- */
+async function getAssignees(projectKey) {
+  if (assigneeCache && assigneeCacheProject === projectKey) {
+    return assigneeCache;
+  }
+  const data = await getAssignableUsers(projectKey);
+  assigneeCache = data;
+  assigneeCacheProject = projectKey;
+  return data;
+}
+
+// ─── ADF → texto formatado ─────────────────────────────────
+
 function adfToText(adf) {
   if (!adf || !adf.content) return '';
 
@@ -40,55 +61,41 @@ function adfToText(adf) {
     switch (node.type) {
       case 'text':
         return node.text || '';
-
       case 'hardBreak':
         return '\n';
-
       case 'paragraph': {
         const text = (node.content || []).map(n => renderNode(n)).join('');
         return text;
       }
-
       case 'heading': {
         const text = (node.content || []).map(n => renderNode(n)).join('');
-        return chalk ? text : text;
+        return text;
       }
-
       case 'bulletList': {
         return (node.content || [])
           .map(item => renderNode(item, indent + 1, { type: 'bullet' }))
           .join('\n');
       }
-
       case 'orderedList': {
         return (node.content || [])
           .map((item, i) => renderNode(item, indent + 1, { type: 'ordered', index: i + 1 }))
           .join('\n');
       }
-
       case 'listItem': {
         const prefix = '  '.repeat(indent - 1) + (
           listInfo?.type === 'ordered' ? `${listInfo.index}. ` : '• '
         );
-        const text = (node.content || [])
-          .map(n => renderNode(n, indent))
-          .join('\n');
+        const text = (node.content || []).map(n => renderNode(n, indent)).join('\n');
         return prefix + text.trim();
       }
-
       case 'codeBlock': {
         const text = (node.content || []).map(n => renderNode(n)).join('');
         return text;
       }
-
       case 'blockquote': {
         const text = (node.content || []).map(n => renderNode(n, indent)).join('\n');
-        return text
-          .split('\n')
-          .map(line => `  ${line}`)
-          .join('\n');
+        return text.split('\n').map(line => `  ${line}`).join('\n');
       }
-
       default:
         if (node.content) {
           return node.content.map(n => renderNode(n, indent, listInfo)).join('');
@@ -104,19 +111,20 @@ function adfToText(adf) {
 // ─── list ─────────────────────────────────────────────────
 
 export async function jiraList(filter = 'active') {
+  const { projectKey } = requireProjectConfig();
   requireConfig();
 
-  let jql = 'project=SDG ORDER BY updated DESC';
+  let jql = `project=${projectKey} ORDER BY updated DESC`;
   let label = '';
 
   if (filter === 'done') {
-    jql = 'project=SDG AND status in (Done,Concluído) ORDER BY updated DESC';
+    jql = `project=${projectKey} AND status in (Done,Concluído) ORDER BY updated DESC`;
     label = 'concluídas';
   } else if (filter === 'all') {
-    jql = 'project=SDG ORDER BY updated DESC';
+    jql = `project=${projectKey} ORDER BY updated DESC`;
     label = 'todas';
   } else {
-    jql = 'project=SDG AND status not in (Done,Closed,Cancelled,Concluído) ORDER BY updated DESC';
+    jql = `project=${projectKey} AND status not in (Done,Closed,Cancelled,Concluído) ORDER BY updated DESC`;
     label = 'ativas';
   }
 
@@ -124,7 +132,7 @@ export async function jiraList(filter = 'active') {
   spin.start();
 
   try {
-    const data = await listIssues(jql);
+    const data = await listIssues(projectKey, jql);
     spin.succeed(`${data.issues?.length || 0} issues ${label} encontradas`);
 
     if (!data.issues || data.issues.length === 0) {
@@ -168,7 +176,6 @@ export async function jiraView(issueKey) {
 
     const { fields } = issue;
 
-    // Extrai texto da descrição (ADF ou string), preservando listas e parágrafos
     let descText = '';
     if (fields.description) {
       if (typeof fields.description === 'string') {
@@ -308,6 +315,7 @@ export async function jiraMove(issueKey) {
 // ─── create ────────────────────────────────────────────────
 
 export async function jiraCreate() {
+  const { projectKey, projectId } = requireProjectConfig();
   requireConfig();
 
   printBanner();
@@ -366,7 +374,7 @@ DESCRIÇÃO: <descrição aqui>`;
     });
   }
 
-  // ── Designar responsável ────────────────────────────────
+  // ── Designar responsável (dinâmico da API) ──────────────
   const assignToMe = await confirm({
     message: 'Atribuir a você?',
     default: true,
@@ -374,17 +382,37 @@ DESCRIÇÃO: <descrição aqui>`;
 
   let assigneeId = null;
   if (assignToMe) {
-    assigneeId = '712020:8ffe9f52-28f1-42f9-9b58-7cfcde227452';
+    // Buscar accountId do usuário logado
+    try {
+      const meResp = await fetch(`${getJiraBaseUrl()}/rest/api/3/myself`, {
+        headers: { 'Authorization': getJiraAuthHeader(), 'Accept': 'application/json' }
+      });
+      const meData = await meResp.json();
+      assigneeId = meData.accountId;
+    } catch {
+      // fallback: não atribuir
+    }
   } else {
-    const assignChoice = await select({
-      message: 'Atribuir para:',
-      choices: [
-        { name: 'Kayo Macedo', value: '712020:88794803-d378-456d-9bab-ed8edf2bb1ed' },
-        { name: 'Fellipe Vaz', value: '712020:a9eec217-fb87-4ad3-b96f-2db7ae6f9f62' },
-        { name: 'Não atribuir', value: null },
-      ],
-    });
-    assigneeId = assignChoice;
+    // Buscar lista de assignees dinamicamente
+    const spinUsers = spinner('Buscando usuários do projeto...');
+    spinUsers.start();
+    try {
+      const users = await getAssignees(projectKey);
+      spinUsers.succeed(`${users.length} usuários encontrados`);
+
+      const choices = users
+        .filter(u => u.active)
+        .map(u => ({ name: u.displayName, value: u.accountId }));
+      choices.push({ name: 'Não atribuir', value: null });
+
+      const assignChoice = await select({
+        message: 'Atribuir para:',
+        choices,
+      });
+      assigneeId = assignChoice;
+    } catch {
+      spinUsers.fail('Não foi possível buscar usuários');
+    }
   }
 
   // ── Status inicial ──────────────────────────────────────
@@ -411,18 +439,20 @@ DESCRIÇÃO: <descrição aqui>`;
   spin.start();
 
   try {
+    // Buscar tipo de issue válido para este projeto
     const typesResp = await fetch(
-      `${getJiraBaseUrl()}/rest/api/3/issue/createmeta/10033/issuetypes`,
+      `${getJiraBaseUrl()}/rest/api/3/issue/createmeta/${projectId}/issuetypes`,
       { headers: { 'Authorization': getJiraAuthHeader(), 'Accept': 'application/json' } }
     );
     const typesData = await typesResp.json();
-    const tarefaType = typesData.issueTypes.find(t => t.name === 'Tarefa');
+    const issueTypeName = getProjectConfig('jira.issueType', 'Tarefa');
+    const tarefaType = typesData.issueTypes.find(t => t.name === issueTypeName);
 
     if (!tarefaType) {
-      throw new Error('Nenhum tipo "Tarefa" disponível para este projeto.');
+      throw new Error(`Nenhum tipo "${issueTypeName}" disponível para este projeto.`);
     }
 
-    const issue = await createIssue('10033', summary.trim(), description.trim() || undefined, tarefaType.id, assigneeId);
+    const issue = await createIssue(projectId, summary.trim(), description.trim() || undefined, tarefaType.id, assigneeId);
     spin.succeed(`Task ${issue.key} criada com sucesso!`);
 
     blank();

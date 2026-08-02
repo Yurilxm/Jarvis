@@ -3,7 +3,7 @@ import { getSafeDiff, stageFiles } from '../git/diff.js';
 import { sanitizeDiff, filterSensitiveFiles } from './sanitize.js';
 import { buildCommitPrompt } from './promptBuilder.js';
 import { askAI } from '../ai/client.js';
-import { getCurrentBranch, hasUncommittedChanges, switchBranch, getPushRemote } from '../git/branch.js';
+import { getCurrentBranch, hasUncommittedChanges, switchBranch, createBranch, getPushRemote } from '../git/branch.js';
 import { PROTECTED_BRANCH, DEVELOPMENT_BRANCH } from '../config/branches.js';
 import { appendHistory } from '../history/store.js';
 import { loadProfile } from '../config/profile.js';
@@ -78,11 +78,32 @@ export async function runCommitFlow() {
         }
       }
 
-      const result = switchBranch(DEVELOPMENT_BRANCH);
+      let result = switchBranch(DEVELOPMENT_BRANCH);
       if (!result.success) {
-        error(`Não foi possível trocar para '${DEVELOPMENT_BRANCH}':`);
-        dim(result.message);
-        process.exit(1);
+        warn(`Branch '${DEVELOPMENT_BRANCH}' não existe neste projeto.`);
+
+        const createDev = await confirm({
+          message: `Deseja criar a branch '${DEVELOPMENT_BRANCH}'?`,
+          default: true,
+        });
+
+        if (createDev) {
+          const createResult = createBranch(DEVELOPMENT_BRANCH);
+          if (!createResult.success) {
+            error(createResult.message);
+            process.exit(1);
+          }
+          success(`Branch '${DEVELOPMENT_BRANCH}' criada.`);
+
+          result = switchBranch(DEVELOPMENT_BRANCH);
+          if (!result.success) {
+            error(`Não foi possível trocar para '${DEVELOPMENT_BRANCH}': ${result.message}`);
+            process.exit(1);
+          }
+        } else {
+          info('Commit cancelado. Crie a branch dev com: jarvis branch create dev');
+          process.exit(0);
+        }
       }
 
       success(`Agora você está na branch '${DEVELOPMENT_BRANCH}'.`);

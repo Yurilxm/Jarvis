@@ -1,0 +1,11 @@
+{
+  "jira": {
+    "projectKey": "SDG",
+    "projectId": "10033",
+    "issueType": "Tarefa"
+  },
+  "git": {
+    "protectedBranch": "main",
+    "developmentBranch": "dev"
+  }
+}

@@ -467,9 +467,32 @@ async function switchBranchCmd(name) {
   if (result.success) {
     success(`Agora você está na branch '${name}'.`);
   } else {
-    error(`Não foi possível trocar para '${name}':`);
-    dim(result.message);
-    process.exit(1);
+    warn(`Branch '${name}' não existe.`);
+
+    const createIt = await confirm({
+      message: `Deseja criar a branch '${name}'?`,
+      default: true,
+    });
+
+    if (createIt) {
+      const createResult = createBranch(name);
+      if (!createResult.success) {
+        error(createResult.message);
+        process.exit(1);
+      }
+      success(`Branch '${name}' criada.`);
+
+      const switchResult = switchBranch(name);
+      if (switchResult.success) {
+        success(`Agora você está na branch '${name}'.`);
+      } else {
+        error(`Não foi possível trocar para '${name}': ${switchResult.message}`);
+        process.exit(1);
+      }
+    } else {
+      info('Troca cancelada.');
+      process.exit(0);
+    }
   }
 }
 
