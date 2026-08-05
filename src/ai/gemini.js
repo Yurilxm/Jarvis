@@ -1,4 +1,6 @@
 ﻿import { GEMINI_API_KEY, GEMINI_MODEL } from '../config/env.js';
+import { checkUsage, incrementUsage } from './usage-tracker.js';
+import { warn } from '../ui.js';
 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
@@ -9,6 +11,12 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GE
  * @returns {Promise<string>} Texto gerado pelo modelo
  */
 export async function generateWithGemini(prompt) {
+  // Verificar cota ANTES de fazer a requisição
+  const before = await checkUsage();
+  if (before.warning) {
+    warn(before.warning);
+  }
+
   const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -32,6 +40,12 @@ export async function generateWithGemini(prompt) {
 
   if (!text) {
     throw new Error('Resposta da Gemini não contém texto válido');
+  }
+
+  // Incrementar contagem APÓS sucesso
+  const after = await incrementUsage();
+  if (after.warning) {
+    warn(after.warning);
   }
 
   return text;

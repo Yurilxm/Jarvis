@@ -317,6 +317,27 @@ export async function runCommitFlow() {
       historyEntry.pushedAt = new Date().toISOString();
       appendHistory(historyEntry);
 
+      // Sugerir release baseado no tipo de commit
+      const commitType = title.split(':')[0].trim();
+      const isFeat = commitType === 'feat';
+      const isFix = commitType === 'fix';
+      
+      if (isFeat || isFix) {
+        blank();
+        const suggestedBump = isFeat ? 'minor' : 'patch';
+        const bumpLabel = isFeat ? 'nova funcionalidade (minor)' : 'correção de bug (patch)';
+        
+        const doRelease = await confirm({
+          message: `Este commit parece ser uma ${bumpLabel}. Deseja criar uma release ${suggestedBump}?`,
+          default: false,
+        });
+        
+        if (doRelease) {
+          const { runReleaseFromCommit } = await import('./release.js');
+          await runReleaseFromCommit(suggestedBump);
+        }
+      }
+
       if (currentBranchAfterCommit === DEVELOPMENT_BRANCH) {
         blank();
         const mergeChoice = await select({

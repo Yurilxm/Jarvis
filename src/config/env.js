@@ -25,4 +25,17 @@ const JIRA_DOMAIN = process.env.JIRA_DOMAIN || '';
 const JIRA_EMAIL = process.env.JIRA_EMAIL || '';
 const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN || '';
 
-export { GEMINI_API_KEY, GEMINI_MODEL, GITHUB_TOKEN, JIRA_DOMAIN, JIRA_EMAIL, JIRA_API_TOKEN };
+// Gemini — limites de cota
+const GEMINI_DAILY_LIMIT = parseInt(process.env.GEMINI_DAILY_LIMIT, 10) || 20;
+const GEMINI_WARNING_THRESHOLD = parseInt(process.env.GEMINI_WARNING_THRESHOLD, 10) || 15;
+
+export {
+  GEMINI_API_KEY,
+  GEMINI_MODEL,
+  GITHUB_TOKEN,
+  JIRA_DOMAIN,
+  JIRA_EMAIL,
+  JIRA_API_TOKEN,
+  GEMINI_DAILY_LIMIT,
+  GEMINI_WARNING_THRESHOLD,
+};
