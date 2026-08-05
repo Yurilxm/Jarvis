@@ -2,7 +2,7 @@
 
 Assistente de desenvolvimento por linha de comando — commits inteligentes, gestão de branches, Pull Requests do GitHub, integração com Jira, revisão de código com IA e geração de documentação.
 
-**Versão:** 1.3.0
+**Versão:** 1.5.0
 
 ## 🚀 Funcionalidades
 
@@ -23,11 +23,12 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Mostra diff visual do que será alterado antes de salvar
 - Fluxo de aprovação igual ao commit (aprovar, editar, gerar novamente ou cancelar)
 
-### Gestão de branches
+### Gestão de branches e Release
 - `main` protegida, com confirmação extra
 - `dev` como branch de desenvolvimento padrão
 - Criação, listagem e troca de branches com verificações de segurança
 - Sugere criar branch quando tenta trocar para uma inexistente
+- Fluxo de release automatizado com criação de tag, push e merge automático de `dev → main`
 
 ### Pull Requests do GitHub
 - Lista, visualiza e revisa Pull Requests com IA
@@ -42,7 +43,7 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Cria novas tasks com suporte a IA para título e descrição
 - Atribuição dinâmica de responsáveis (busca da API do Jira)
 - Cria branches automaticamente ao iniciar uma issue
-- Configuração por projeto via `.jarvis-dev.json` (sem hardcode)
+- Configuração interativa por projeto via `jarvis config` ou arquivo `.jarvis-dev.json`
 
 ### Segurança
 - Nenhuma ação destrutiva é executada sem confirmação
@@ -68,6 +69,8 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 | `jarvis status` | Mostra o status do repositório |
 | `jarvis pull` | Atualiza a branch atual usando `git pull` |
 | `jarvis update` | Atualiza o Jarvis usando `git pull` e `npm install` |
+| `jarvis config` | Configura o `.jarvis-dev.json` do projeto de forma interativa |
+| `jarvis today` | Exibe o resumo do dia (issues, PRs, status) |
 
 **Commit**
 
@@ -75,6 +78,7 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 |---|---|
 | `jarvis commit` | Analisa as alterações e gera uma mensagem de commit com IA |
 | `jarvis merge [origem] [destino]` | Faz merge entre branches (padrão: `dev → main`) |
+| `jarvis release` | Executa o fluxo de release (tag, push e merge dev → main) |
 
 **Branches**
 
@@ -132,6 +136,9 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 | `jarvis ignore` | Gerencia a lista de arquivos ignorados com IA ou manualmente |
 | `jarvis history` | Mostra o histórico de commits e pushes realizados pelo Jarvis |
 
+
+> ⌨️ **Atalhos:** `jarvis c` (commit), `jarvis s` (status), `jarvis m` (merge), `jarvis b` (branch), `jarvis p` (pull), `jarvis u` (update), `jarvis r` (review), `jarvis d` (docs), `jarvis h` (history), `jarvis i` (init), `jarvis j` (jira), `jarvis t` (today)
+
 ## 🛠️ Requisitos
 
 - Node.js 18 ou superior (recomendado: 20+)
@@ -186,7 +193,13 @@ JIRA_API_TOKEN=seu-token-jira
 
 **2. Configuração do projeto (`.jarvis-dev.json`)**
 
-Na raiz de cada projeto onde quiser usar o Jarvis com Jira, crie:
+Você pode configurar o arquivo `.jarvis-dev.json` do seu projeto de forma interativa através do comando:
+
+```bash
+jarvis config
+```
+
+Ou, se preferir, crie o arquivo `.jarvis-dev.json` manualmente na raiz do seu projeto:
 
 ```json
 {
@@ -261,6 +274,13 @@ Depois, digite `jarvis` e pressione `Tab` para completar os comandos disponívei
 
 ## 🧪 Exemplos de uso
 
+**Configurar o projeto interativamente**
+
+```bash
+cd meu-projeto
+jarvis config
+```
+
 **Commit com IA**
 
 ```bash
@@ -329,7 +349,7 @@ Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar 
 | Jarvis não encontra o repositório Git | Execute o comando dentro de uma pasta com repositório Git |
 | Comando funciona, mas não encontra o `.env` | Verifique se o `.env` está na pasta de instalação do Jarvis |
 | Jira retorna erro de autenticação | Verifique `JIRA_DOMAIN`, `JIRA_EMAIL` e `JIRA_API_TOKEN` |
-| Jira pede configuração do projeto | Crie o arquivo `.jarvis-dev.json` na raiz do projeto |
+| Jira pede configuração do projeto | Execute `jarvis config` ou crie o arquivo `.jarvis-dev.json` na raiz do projeto |
 | GitHub retorna erro de permissão | Verifique as permissões do token e o acesso ao repositório |
 | Autocomplete não funciona | Execute novamente `. .\setup.ps1` no PowerShell |
 
@@ -340,9 +360,12 @@ Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar 
 | `v1.0` | Commits com IA, branches, merge, Pull Requests e interface |
 | `v1.1` | Assinatura automática nos commits e perfil do desenvolvedor |
 | `v1.2` | Integração com Jira e configuração por projeto (`.jarvis-dev.json`) |
-| `v2.x` | Revisão de código e documentação automática |
-| `v3.x` | Controle básico do computador |
-| `v4.x` | Comandos de voz |
+| `v1.3` | Revisão de código com IA e geração de documentação |
+| `v1.4` | Aliases, undo, today e aviso de cota Gemini |
+| `v1.5` | Release automatizado, config interativo e modularização do CLI |
+| `v2.x` | Testes automatizados |
+| `v3.x` | Comandos de voz (Voice/Whisper) |
+| `v4.x` | Controle básico do computador (Jarvis Personal) |
 | `v5.x` | Servidor doméstico e automação residencial |
 
 ## 📝 Licença

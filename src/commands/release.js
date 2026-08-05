@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { confirm, input, select } from '@inquirer/prompts';
+import { runMergeFlow } from '../commit/merge.js';
 import {
   printBanner,
   info,
@@ -88,7 +89,7 @@ export async function runRelease() {
   }
 
   const shouldPush = await confirm({
-    message: 'Fazer push do commit e da tag?',
+    message: 'Fazer push do commit, tag e merge?',
     default: true,
   });
 
@@ -97,6 +98,11 @@ export async function runRelease() {
       execSync('git push', { encoding: 'utf-8', stdio: 'inherit' });
       execSync(`git push origin ${tagName}`, { encoding: 'utf-8', stdio: 'inherit' });
       success('Push realizado com sucesso!');
+
+      // Inicia o merge dev → main e volta para dev
+      blank();
+      info('Iniciando merge dev → main...');
+      await runMergeFlow();
     } catch (err) {
       error(`Erro ao fazer push: ${err.message}`);
       dim('O commit e a tag foram criados localmente.');

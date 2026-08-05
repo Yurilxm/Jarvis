@@ -11,6 +11,7 @@ import { runToday } from './commands/today.js';
 import { showStatus } from './commands/status.js';
 import { handleBranchCommand } from './commands/branch.js';
 import { handleProfileCommand } from './commands/profile.js';
+import { runConfig } from './commands/config.js';
 import { handlePrCommand } from './pr/handler.js';
 import { runIgnoreMenu } from './ignore/menu.js';
 import { runHistoryView } from './history/view.js';
@@ -25,9 +26,18 @@ const subcommand = process.argv[3];
 const arg = process.argv[4];
 
 const ALIASES = {
-  c: 'commit', s: 'status', m: 'merge', b: 'branch', p: 'pull',
-  u: 'update', r: 'review', d: 'docs', h: 'history', i: 'init',
-  j: 'jira', t: 'today',
+  c: 'commit', 
+  s: 'status', 
+  m: 'merge', 
+  b: 'branch', 
+  p: 'pull',
+  u: 'update', 
+  r: 'review', 
+  d: 'docs', 
+  h: 'history', 
+  i: 'init',
+  j: 'jira', 
+  t: 'today',
 };
 command = ALIASES[command] || command;
 
@@ -73,6 +83,7 @@ async function main() {
   else if (command === 'undo') await runUndo();
   else if (command === 'today') await runToday();
   else if (command === 'release') await runRelease();
+  else if (command === 'config') await runConfig();
   else {
     await showLoading('Inicializando Jarvis', { steps: ['Boot', 'Carregando comandos', 'Pronto'], durationMs: 800 });
     showHelp();
@@ -87,6 +98,7 @@ function showHelp() {
       ['jarvis status', 'Mostra status do repositório'],
       ['jarvis pull', 'Atualiza a branch atual (git pull)'],
       ['jarvis update', 'Atualiza o Jarvis (pull + npm install)'],
+      ['jarvis config', 'Configura o .jarvis-dev.json do projeto'],
       ['jarvis today', 'Resumo do dia (issues, PRs, status)'],
     ]},
     { title: 'commit', commands: [

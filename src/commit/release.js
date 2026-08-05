@@ -2,13 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
-import { success, error, dim, accent, chalk, info } from '../ui.js';
+import { success, error, info } from '../ui.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export async function runReleaseFromCommit(bump) {
-  // sobe 2 níveis: src/commit → src → raiz do Jarvis
   const pkgPath = path.join(__dirname, '..', '..', 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
   const parts = pkg.version.split('.').map(Number);
@@ -31,6 +30,11 @@ export async function runReleaseFromCommit(bump) {
     execSync('git push', { encoding: 'utf-8', stdio: 'inherit' });
     execSync(`git push origin ${tagName}`, { encoding: 'utf-8', stdio: 'inherit' });
     success(`Release ${tagName} concluída!`);
+
+    // Após o release, fazer merge dev → main e voltar para dev
+    info('Iniciando merge dev → main...');
+    const { runMergeFlow } = await import('./merge.js');
+    await runMergeFlow();
   } catch (err) {
     error(`Erro na release: ${err.message}`);
   }
