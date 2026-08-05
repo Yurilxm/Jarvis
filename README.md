@@ -2,7 +2,7 @@
 
 Assistente de desenvolvimento por linha de comando — commits inteligentes, gestão de branches, Pull Requests do GitHub, integração com Jira, revisão de código com IA e geração de documentação.
 
-**Versão:** 1.5.0
+**Versão:** 1.7.0
 
 ## 🚀 Funcionalidades
 
