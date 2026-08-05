@@ -20,7 +20,10 @@ export async function runRelease() {
   printBanner();
   info('Preparando nova release...\n');
 
-  const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json');
+  const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const pkgPath = path.join(rootDir, 'package.json');
+  const readmePath = path.join(rootDir, 'README.md');
+  
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
   const current = pkg.version;
   info(`Versão atual: ${accent(current)}`);
@@ -67,12 +70,21 @@ export async function runRelease() {
     return;
   }
 
+  // Atualizar package.json
   pkg.version = newVersion;
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
-  success('package.json atualizado.');
+  
+  // Atualizar README.md
+  if (fs.existsSync(readmePath)) {
+    let readme = fs.readFileSync(readmePath, 'utf-8');
+    readme = readme.replace(/\*\*Versão:\*\* \d+\.\d+\.\d+/, `**Versão:** ${newVersion}`);
+    fs.writeFileSync(readmePath, readme, 'utf-8');
+  }
+
+  success('package.json e README atualizados.');
 
   try {
-    execSync(`git add package.json`, { encoding: 'utf-8', stdio: 'inherit' });
+    execSync(`git add package.json README.md`, { encoding: 'utf-8', stdio: 'inherit' });
     execSync(`git commit -m "chore: bump version to ${tagName}"`, { encoding: 'utf-8', stdio: 'inherit' });
     success('Commit criado.');
   } catch (err) {
@@ -115,6 +127,7 @@ export async function runRelease() {
 
 export function semverBump(version, bump) {
   const parts = version.split('.').map(Number);
+  while (parts.length < 3) parts.push(0);
   if (bump === 'patch') { parts[2]++; parts[1] = parts[1] || 0; parts[0] = parts[0] || 0; }
   if (bump === 'minor') { parts[1]++; parts[2] = 0; }
   if (bump === 'major') { parts[0]++; parts[1] = 0; parts[2] = 0; }
