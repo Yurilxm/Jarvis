@@ -1,10 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { success, error, dim, accent, chalk, info } from '../ui.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export async function runReleaseFromCommit(bump) {
-  const pkgPath = path.join(process.cwd(), '..', 'package.json');
+  // sobe 2 níveis: src/commit → src → raiz do Jarvis
+  const pkgPath = path.join(__dirname, '..', '..', 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
   const parts = pkg.version.split('.').map(Number);
   
