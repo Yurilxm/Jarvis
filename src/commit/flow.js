@@ -301,6 +301,9 @@ export async function runCommitFlow() {
     default: false,
   });
 
+  // Variável para controlar se o release já fez o merge
+  let releaseDone = false;
+
   if (shouldPush) {
     info('Executando git push...');
     try {
@@ -335,10 +338,12 @@ export async function runCommitFlow() {
         if (doRelease) {
           const { runReleaseFromCommit } = await import('./release.js');
           await runReleaseFromCommit(suggestedBump);
+          releaseDone = true;
         }
       }
 
-      if (currentBranchAfterCommit === DEVELOPMENT_BRANCH) {
+      // Só pergunta sobre o merge se o release não foi feito
+      if (currentBranchAfterCommit === DEVELOPMENT_BRANCH && !releaseDone) {
         blank();
         const mergeChoice = await select({
           message: 'Deseja iniciar o merge dev → main?',
