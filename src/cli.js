@@ -22,6 +22,7 @@ import { PROTECTED_BRANCH } from './config/branches.js';
 import { showLoading, warn, printBanner, printBox, muted, chalk, dim, blank } from './ui.js';
 import { runAnalyze } from './commands/analyze.js';
 import { runUX } from './commands/ux.js';
+import { runCheck } from './commands/check.js';
 
 let command = process.argv[2];
 const subcommand = process.argv[3];
@@ -89,6 +90,7 @@ async function main() {
   else if (command === 'config') await runConfig();
   else if (command === 'analyze') await runAnalyze();
   else if (command === 'ux') await runUX();
+  else if (command === 'check') await runCheck();
   else {
     await showLoading('Inicializando Jarvis', { steps: ['Boot', 'Carregando comandos', 'Pronto'], durationMs: 800 });
     showHelp();
@@ -122,8 +124,9 @@ function showHelp() {
       ['jarvis review staged', 'Revisa apenas o que está staged'],
       ['jarvis docs', 'Gera/atualiza README.md com IA'],
       ['jarvis docs changelog', 'Gera/atualiza CHANGELOG.md com IA'],
-      ['jarvis analyze', 'Analisa arquitetura do projeto (somente leitura)'],
       ['jarvis ux', 'Analisa usabilidade do frontend (somente leitura)'],
+      ['jarvis analyze', 'Analisa arquitetura do projeto (somente leitura)'],
+      ['jarvis check', 'Verifica vulnerabilidades e segredos no código'],
     ]},
     { title: 'pull requests', commands: [
       ['jarvis pr list', 'Lista PRs abertas'],

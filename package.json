@@ -25,6 +25,8 @@
     "ora": "^9.4.1"
   },
   "devDependencies": {
-    "jest": "^30.4.2"
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.4",
+    "jest": "^30.4.2",
+    "secretlint": "^13.0.4"
   }
 }
