@@ -2,7 +2,7 @@
 
 Assistente de desenvolvimento por linha de comando — commits inteligentes, gestão de branches, Pull Requests do GitHub, integração com Jira, revisão de código com IA e geração de documentação.
 
-**Versão:** 1.9.0
+**Versão:** 3.0.0
 
 ## 🚀 Funcionalidades
 
@@ -53,91 +53,17 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Arquivos sensíveis ignorados automaticamente, com regras adicionais via `.jarvisignore`
 - Nenhum ID de usuário, projeto ou configuração específica fica hardcoded no código
 
+### Análise de projeto com IA
+- Analisa a arquitetura completa do projeto (`jarvis analyze`)
+- Revisa usabilidade e acessibilidade do frontend (`jarvis ux`)
+- Verifica vulnerabilidades em dependências e segredos expostos (`jarvis check`)
+- Scanner de segredos integrado (secretlint) com explicação dos achados por IA
+
 ### Interface
 - Banner ASCII dinâmico com a versão atual
 - Spinners para indicar operações em andamento
 - Caixas formatadas para melhorar a leitura
 - Sistema de ajuda organizado por categorias
-
-## 📋 Comandos
-
-**Projeto**
-
-| Comando | Descrição |
-|---|---|
-| `jarvis init` | Inicializa um repositório Git |
-| `jarvis status` | Mostra o status do repositório |
-| `jarvis pull` | Atualiza a branch atual usando `git pull` |
-| `jarvis update` | Atualiza o Jarvis usando `git pull` e `npm install` |
-| `jarvis config` | Configura o `.jarvis-dev.json` do projeto de forma interativa |
-| `jarvis today` | Exibe o resumo do dia (issues, PRs, status) |
-
-**Commit**
-
-| Comando | Descrição |
-|---|---|
-| `jarvis commit` | Analisa as alterações e gera uma mensagem de commit com IA |
-| `jarvis merge [origem] [destino]` | Faz merge entre branches (padrão: `dev → main`) |
-| `jarvis release` | Executa o fluxo de release (tag, push e merge dev → main) |
-
-**Branches**
-
-| Comando | Descrição |
-|---|---|
-| `jarvis branch list` | Lista as branches locais |
-| `jarvis branch create <nome>` | Cria uma nova branch |
-| `jarvis branch switch <nome>` | Troca para outra branch |
-
-**Revisão e Documentação**
-
-| Comando | Descrição |
-|---|---|
-| `jarvis review` | Revisa alterações com IA (somente leitura) |
-| `jarvis review staged` | Revisa apenas o que está staged |
-| `jarvis docs` | Gera/atualiza README.md com IA |
-| `jarvis docs changelog` | Gera/atualiza CHANGELOG.md com IA |
-
-**Pull Requests**
-
-| Comando | Descrição |
-|---|---|
-| `jarvis pr list` | Lista as Pull Requests abertas |
-| `jarvis pr view <n>` | Mostra os detalhes de uma Pull Request |
-| `jarvis pr diff <n>` | Mostra as alterações de uma Pull Request |
-| `jarvis pr review <n>` | Analisa uma Pull Request usando IA |
-| `jarvis pr checkout <n>` | Faz checkout da branch de uma Pull Request |
-| `jarvis pr approve <n>` | Aprova uma Pull Request |
-| `jarvis pr request-changes <n>` | Solicita alterações em uma Pull Request |
-| `jarvis pr comment <n>` | Adiciona um comentário a uma Pull Request |
-| `jarvis pr merge <n>` | Faz merge de uma Pull Request |
-| `jarvis pr close <n>` | Fecha uma Pull Request sem realizar merge |
-
-**Jira**
-
-| Comando | Descrição |
-|---|---|
-| `jarvis jira list [active\|all\|done]` | Lista issues do Jira por status |
-| `jarvis jira view <issue>` | Mostra os detalhes de uma issue |
-| `jarvis jira move <issue>` | Move uma issue para outro status |
-| `jarvis jira create` | Cria uma nova task (com IA opcional) |
-
-**Perfil**
-
-| Comando | Descrição |
-|---|---|
-| `jarvis profile setup` | Configura o perfil do desenvolvedor |
-| `jarvis profile show` | Mostra o perfil atualmente configurado |
-| `jarvis profile edit` | Permite editar manualmente o perfil |
-
-**Outros**
-
-| Comando | Descrição |
-|---|---|
-| `jarvis ignore` | Gerencia a lista de arquivos ignorados com IA ou manualmente |
-| `jarvis history` | Mostra o histórico de commits e pushes realizados pelo Jarvis |
-
-
-> ⌨️ **Atalhos:** `jarvis c` (commit), `jarvis s` (status), `jarvis m` (merge), `jarvis b` (branch), `jarvis p` (pull), `jarvis u` (update), `jarvis r` (review), `jarvis d` (docs), `jarvis h` (history), `jarvis i` (init), `jarvis j` (jira), `jarvis t` (today)
 
 ## 🛠️ Requisitos
 
@@ -251,26 +177,88 @@ O Jarvis tentará identificar automaticamente os dados do desenvolvedor usando o
 
 > Para usar os comandos de Pull Request, o token do GitHub precisa ter permissões suficientes para acessar e gerenciar os repositórios utilizados.
 
-## 🔒 Segurança
+## 📋 Uso e Comandos
 
-- O `.env` nunca deve ser enviado ao Git e já está incluído no `.gitignore`
-- Tokens e chaves não aparecem nos logs nem na saída do terminal
-- O conteúdo dos diffs é sanitizado antes de ser enviado à IA
-- Arquivos sensíveis são ignorados automaticamente, com regras adicionais via `.jarvisignore`
-- A branch `main` possui uma camada extra de proteção
-- Nenhuma ação destrutiva é executada sem confirmação explícita
-- O Jarvis não realiza stash automático nem resolve conflitos automaticamente
-- Nenhum ID de usuário, projeto ou configuração específica fica hardcoded no código
+**Projeto**
 
-> ⚠️ Nunca compartilhe ou publique os valores do seu arquivo `.env`.
+| Comando | Descrição |
+|---|---|
+| `jarvis init` | Inicializa um repositório Git |
+| `jarvis status` | Mostra o status do repositório |
+| `jarvis pull` | Atualiza a branch atual usando `git pull` |
+| `jarvis update` | Atualiza o Jarvis usando `git pull` e `npm install` |
+| `jarvis config` | Configura o `.jarvis-dev.json` do projeto de forma interativa |
+| `jarvis today` | Exibe o resumo do dia (issues, PRs, status) |
 
-## ⌨️ Autocomplete no PowerShell (opcional)
+**Commit**
 
-```powershell
-. .\setup.ps1
-```
+| Comando | Descrição |
+|---|---|
+| `jarvis commit` | Analisa as alterações e gera uma mensagem de commit com IA |
+| `jarvis merge [origem] [destino]` | Faz merge entre branches (padrão: `dev → main`) |
+| `jarvis release` | Executa o fluxo de release (tag, push e merge dev → main) |
+| `jarvis undo` | Desfaz o último commit (soft reset) |
 
-Depois, digite `jarvis` e pressione `Tab` para completar os comandos disponíveis.
+**Branches**
+
+| Comando | Descrição |
+|---|---|
+| `jarvis branch list` | Lista as branches locais |
+| `jarvis branch create <nome>` | Cria uma nova branch |
+| `jarvis branch switch <nome>` | Troca para outra branch |
+
+**Revisão e Documentação**
+
+| Comando | Descrição |
+|---|---|
+| `jarvis review` | Revisa alterações com IA (somente leitura) |
+| `jarvis review staged` | Revisa apenas o que está staged |
+| `jarvis docs` | Gera/atualiza README.md com IA |
+| `jarvis docs changelog` | Gera/atualiza CHANGELOG.md com IA |
+| `jarvis analyze` | Analisa arquitetura do projeto (somente leitura) |
+| `jarvis ux` | Analisa usabilidade do frontend (somente leitura) |
+| `jarvis check` | Verifica vulnerabilidades e segredos no código |
+
+**Pull Requests**
+
+| Comando | Descrição |
+|---|---|
+| `jarvis pr list` | Lista as Pull Requests abertas |
+| `jarvis pr view <n>` | Mostra os detalhes de uma Pull Request |
+| `jarvis pr diff <n>` | Mostra as alterações de uma Pull Request |
+| `jarvis pr review <n>` | Analisa uma Pull Request usando IA |
+| `jarvis pr checkout <n>` | Faz checkout da branch de uma Pull Request |
+| `jarvis pr approve <n>` | Aprova uma Pull Request |
+| `jarvis pr request-changes <n>` | Solicita alterações em uma Pull Request |
+| `jarvis pr comment <n>` | Adiciona um comentário a uma Pull Request |
+| `jarvis pr merge <n>` | Faz merge de uma Pull Request |
+| `jarvis pr close <n>` | Fecha uma Pull Request sem realizar merge |
+
+**Jira**
+
+| Comando | Descrição |
+|---|---|
+| `jarvis jira list [active\|all\|done]` | Lista issues do Jira por status |
+| `jarvis jira view <issue>` | Mostra os detalhes de uma issue |
+| `jarvis jira move <issue>` | Move uma issue para outro status |
+| `jarvis jira create` | Cria uma nova task (com IA opcional) |
+
+**Perfil**
+
+| Comando | Descrição |
+|---|---|
+| `jarvis profile setup` | Configura o perfil do desenvolvedor |
+| `jarvis profile show` | Mostra o perfil atualmente configurado |
+| `jarvis profile edit` | Permite editar manualmente o perfil |
+
+**Outros**
+
+| Comando | Descrição |
+|---|---|
+| `jarvis ignore` | Gerencia a lista de arquivos ignorados com IA ou manualmente |
+| `jarvis history` | Mostra o histórico de commits e pushes realizados pelo Jarvis |
+
+> ⌨️ **Atalhos:** `jarvis c` (commit), `jarvis s` (status), `jarvis m` (merge), `jarvis b` (branch), `jarvis p` (pull), `jarvis u` (update), `jarvis r` (review), `jarvis d` (docs), `jarvis h` (history), `jarvis i` (init), `jarvis j` (jira), `jarvis t` (today)
 
 ## 🧪 Exemplos de uso
 
@@ -338,6 +326,27 @@ jarvis profile edit
 
 Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar em qualquer projeto Git e executar `jarvis status` ou `jarvis commit` — os comandos Git usam o projeto atual, mas o `.env` sempre é carregado a partir da pasta de instalação do Jarvis, não da pasta do projeto em que o comando está sendo executado.
 
+## 🔒 Segurança
+
+- O `.env` nunca deve ser enviado ao Git e já está incluído no `.gitignore`
+- Tokens e chaves não aparecem nos logs nem na saída do terminal
+- O conteúdo dos diffs é sanitizado antes de ser enviado à IA
+- Arquivos sensíveis são ignorados automaticamente, com regras adicionais via `.jarvisignore`
+- A branch `main` possui uma camada extra de proteção
+- Nenhuma ação destrutiva é executada sem confirmação explícita
+- O Jarvis não realiza stash automático nem resolve conflitos automaticamente
+- Nenhum ID de usuário, projeto ou configuração específica fica hardcoded no código
+
+> ⚠️ Nunca compartilhe ou publique os valores do seu arquivo `.env`.
+
+## ⌨️ Autocomplete no PowerShell (opcional)
+
+```powershell
+. .\setup.ps1
+```
+
+Depois, digite `jarvis` e pressione `Tab` para completar os comandos disponíveis.
+
 ## 🐛 Solução de problemas
 
 | Problema | Solução |
@@ -363,10 +372,12 @@ Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar 
 | `v1.3` | Revisão de código com IA e geração de documentação |
 | `v1.4` | Aliases, undo, today e aviso de cota Gemini |
 | `v1.5` | Release automatizado, config interativo e modularização do CLI |
-| `v2.x` | Testes automatizados |
-| `v3.x` | Comandos de voz (Voice/Whisper) |
-| `v4.x` | Controle básico do computador (Jarvis Personal) |
-| `v5.x` | Servidor doméstico e automação residencial |
+| `v2.0` | Testes automatizados com Jest |
+| `v2.5` | Análise de arquitetura e usabilidade com IA (analyze, ux) |
+| `v3.0` | Verificação de segurança (check — npm audit + secretlint + IA) |
+| `v4.x` | Comandos de voz (Voice/Whisper) |
+| `v5.x` | Controle básico do computador (Jarvis Personal) |
+| `v6.x` | Servidor doméstico e automação residencial |
 
 ## 📝 Licença
 
