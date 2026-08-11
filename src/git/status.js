@@ -42,7 +42,7 @@ export function initRepo(defaultBranch = 'main') {
  * @param {string} str
  * @returns {string}
  */
-function unquotePath(str) {
+export function unquotePath(str) {
   if (str.startsWith('"') && str.endsWith('"') && str.length >= 2) {
     str = str.slice(1, -1);
     str = str.replace(/\\([0-7]{3}|["\\abfnrtv])/g, (match, esc) => {
@@ -58,16 +58,10 @@ function unquotePath(str) {
 
 /**
  * Faz o parsing de uma linha do `git status --porcelain`.
- * Cobre os três formatos possíveis:
- *   " M arquivo.txt"
- *   "\"M arquivo.txt\""          (linha inteira entre aspas)
- *   "?? \"arquivo novo.txt\""    (só o path entre aspas)
- *   "R  old.txt -> new.txt"      (renomeio, com ou sem aspas no novo path)
- *
  * @param {string} rawLine
  * @returns {{ status: string, file: string }}
  */
-function parsePorcelainLine(rawLine) {
+export function parsePorcelainLine(rawLine) {
   let line = rawLine;
 
   // Caso 1: a linha inteira veio entre aspas

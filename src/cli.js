@@ -18,34 +18,62 @@ import { runHistoryView } from './history/view.js';
 import { runReviewFlow } from './review/flow.js';
 import { runDocsFlow } from './docs/flow.js';
 import { handleJiraCommand } from './jira/handler.js';
-import { PROTECTED_BRANCH } from './config/branches.js';
+import { getProtectedBranch } from './config/branches.js';
 import { showLoading, warn, printBanner, printBox, muted, chalk, dim, blank } from './ui.js';
 import { runAnalyze } from './commands/analyze.js';
 import { runUX } from './commands/ux.js';
 import { runCheck } from './commands/check.js';
+import { showProjects } from './commands/projects.js';
+import { maybeSelectProjectOnLaunch, manageProjectsInteractive, selectProjectInteractive } from './commands/switch-project.js';
+import { runAddProject } from './commands/add-project.js';
+import { runShellSetup } from './commands/shell-setup.js';
+import { runInteractiveMenu } from './commands/menu.js';
+import { resolveCommand } from './cli-routing.js';
+import { getLaunchMode } from './config/preferences.js';
 
 let command = process.argv[2];
-const subcommand = process.argv[3];
-const arg = process.argv[4];
+let subcommand = process.argv[3];
+let arg = process.argv[4];
 
-const ALIASES = {
-  c: 'commit', 
-  s: 'status', 
-  m: 'merge', 
-  b: 'branch', 
-  p: 'pull',
-  u: 'update', 
-  r: 'review', 
-  d: 'docs', 
-  h: 'history', 
-  i: 'init',
-  j: 'jira', 
-  t: 'today',
-  a: 'analyze'
-};
-command = ALIASES[command] || command;
+command = resolveCommand(command);
 
-await main();
+await bootstrap();
+
+async function bootstrap() {
+  const wantsMenu = command === 'menu';
+  const wantsHelp = command === 'help';
+  const noArgs = !command;
+
+  // Lista de comandos (modo CLI / help explícito)
+  if (wantsHelp || (noArgs && getLaunchMode() === 'commands')) {
+    showHelpText();
+    dim('  Dica: jarvis menu  → abre o menu interativo');
+    dim('  Dica: jarvis config → trocar o modo de abertura');
+    blank();
+    return;
+  }
+
+  // Menu interativo (padrão, ou jarvis menu forçado)
+  if (wantsMenu || noArgs) {
+    await showLoading('Inicializando Jarvis', {
+      steps: ['Boot', 'Carregando comandos', 'Pronto'],
+      durationMs: 600,
+    });
+    await maybeSelectProjectOnLaunch();
+    const picked = await runInteractiveMenu();
+    if (!picked) return;
+    if (picked.argv[0] === 'help-text') {
+      showHelpText();
+      return;
+    }
+    command = picked.argv[0];
+    subcommand = picked.argv[1];
+    arg = picked.argv[2];
+    command = resolveCommand(command);
+  }
+
+  await main();
+}
 
 async function main() {
   if (command === 'init') await runInitFlow();
@@ -91,13 +119,42 @@ async function main() {
   else if (command === 'analyze') await runAnalyze();
   else if (command === 'ux') await runUX();
   else if (command === 'check') await runCheck();
+  else if (command === 'projects' || command === 'workspace') {
+    const depthArg = [subcommand, arg].find((v) => v && /^\d+$/.test(v));
+    await showLoading('Varrendo subpastas', {
+      steps: ['Lendo árvore', 'Detectando repositórios Git', 'Montando lista'],
+      durationMs: 500,
+    });
+    showProjects({ maxDepth: depthArg ? Number(depthArg) : 4 });
+  }
+  else if (command === 'use' || command === 'switch-project') {
+    await selectProjectInteractive({ force: true });
+  }
+  else if (command === 'add') {
+    runAddProject(subcommand || undefined);
+  }
+  else if (command === 'shell-setup') {
+    runShellSetup();
+  }
+  else if (command === 'setup') {
+    // Atalho: setup Windows (policy + shim) via o mesmo script do postinstall
+    const { spawnSync } = await import('node:child_process');
+    const { fileURLToPath } = await import('node:url');
+    const pathMod = await import('node:path');
+    const setupJs = pathMod.join(pathMod.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'postinstall.js');
+    spawnSync(process.execPath, [setupJs], { stdio: 'inherit' });
+  }
+  else if (command === 'projects-manage') {
+    printBanner();
+    await manageProjectsInteractive();
+  }
   else {
-    await showLoading('Inicializando Jarvis', { steps: ['Boot', 'Carregando comandos', 'Pronto'], durationMs: 800 });
-    showHelp();
+    warn(`Comando desconhecido: ${command}`);
+    dim('Rode jarvis sem argumentos para o menu interativo.');
   }
 }
 
-function showHelp() {
+function showHelpText() {
   printBanner();
   const sections = [
     { title: 'projeto', commands: [
@@ -107,6 +164,11 @@ function showHelp() {
       ['jarvis update', 'Atualiza o Jarvis (pull + npm install)'],
       ['jarvis config', 'Configura o .jarvis-dev.json do projeto'],
       ['jarvis today', 'Resumo do dia (issues, PRs, status)'],
+      ['jarvis projects [n]', 'Lista repos Git nas subpastas (até n níveis)'],
+      ['jarvis use', 'Seleciona um projeto gerenciado e entra na pasta'],
+      ['jarvis add [path]', 'Valida a pasta e adiciona à lista gerenciada'],
+      ['jarvis shell-setup', 'Instala wrapper PowerShell (cd real no terminal)'],
+      ['jarvis setup', 'Setup Windows: libera comando jarvis (sem .cmd)'],
     ]},
     { title: 'commit', commands: [
       ['jarvis commit', 'Gera mensagem de commit com IA'],
@@ -158,7 +220,7 @@ function showHelp() {
     const body = section.commands.map(([cmd, desc]) => `${chalk.green(cmd.padEnd(36))} ${muted(desc)}`).join('\n');
     printBox(body, { title: section.title });
   }
-  dim(`  Branch protegida: ${chalk.yellow(PROTECTED_BRANCH)}`);
-  dim('  Sem git? Rode jarvis init nesta pasta.');
+  dim(`  Branch protegida: ${chalk.yellow(getProtectedBranch())}`);
+  dim('  Dica: rode jarvis sem argumentos para o menu com busca.');
   blank();
 }

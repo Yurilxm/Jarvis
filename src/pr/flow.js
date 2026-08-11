@@ -1,7 +1,7 @@
 import { getRepoInfo, listPullRequests, getPullRequest, getPullRequestFiles, getPullRequestDiff, approvePullRequest, requestChanges, commentOnPR, mergePullRequest, closePullRequest } from '../github/pr.js';
 import { askAI } from '../ai/client.js';
 import { getCurrentBranch, hasUncommittedChanges, switchBranch } from '../git/branch.js';
-import { PROTECTED_BRANCH } from '../config/branches.js';
+import { getProtectedBranch } from '../config/branches.js';
 import { confirm, input } from '@inquirer/prompts';
 import { execSync } from 'node:child_process';
 import chalk from 'chalk';
@@ -298,6 +298,7 @@ export async function prComment(prNumber) {
 // ─── merge ────────────────────────────────────────────────
 
 export async function prMerge(prNumber) {
+  const protectedBranch = getProtectedBranch();
   const { owner, repo } = requireRepoInfo();
   const pr = await getPullRequest(owner, repo, prNumber);
 
@@ -306,8 +307,8 @@ export async function prMerge(prNumber) {
   console.log(`  Origem:  ${chalk.green(pr.head.ref)}`);
   console.log(`  Destino: ${chalk.yellow(pr.base.ref)}`);
 
-  if (pr.base.ref === PROTECTED_BRANCH) {
-    console.warn(chalk.yellow(`\n${logSymbols.warning} Atenção: merge na branch protegida '${PROTECTED_BRANCH}'!`));
+  if (pr.base.ref === protectedBranch) {
+    console.warn(chalk.yellow(`\n${logSymbols.warning} Atenção: merge na branch protegida '${protectedBranch}'!`));
   }
 
   if (pr.mergeable === false) {
@@ -316,7 +317,7 @@ export async function prMerge(prNumber) {
   }
 
   const confirmed = await confirm({
-    message: pr.base.ref === PROTECTED_BRANCH
+    message: pr.base.ref === protectedBranch
       ? chalk.red('Confirmar merge na branch protegida?')
       : 'Confirmar merge?',
     default: false,

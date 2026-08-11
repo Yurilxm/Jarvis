@@ -4,7 +4,7 @@ import { sanitizeDiff, filterSensitiveFiles } from './sanitize.js';
 import { buildCommitPrompt } from './promptBuilder.js';
 import { askAI } from '../ai/client.js';
 import { getCurrentBranch, hasUncommittedChanges, switchBranch, createBranch, getPushRemote } from '../git/branch.js';
-import { PROTECTED_BRANCH, DEVELOPMENT_BRANCH } from '../config/branches.js';
+import { getProtectedBranch, getDevelopmentBranch } from '../config/branches.js';
 import { appendHistory } from '../history/store.js';
 import { loadProfile } from '../config/profile.js';
 import { buildSignature } from './signature.js';
@@ -31,6 +31,8 @@ import {
  * Fluxo completo do assistente de commit.
  */
 export async function runCommitFlow() {
+  const protectedBranch = getProtectedBranch();
+  const developmentBranch = getDevelopmentBranch();
   await showLoading('Iniciando commit assistant', {
     steps: ['Lendo git', 'Preparando diff', 'Conectando IA'],
     durationMs: 900,
@@ -45,15 +47,15 @@ export async function runCommitFlow() {
 
   const branch = getCurrentBranch();
 
-  if (branch === PROTECTED_BRANCH) {
-    warn(`Você está na branch '${PROTECTED_BRANCH}' (protegida).`);
+  if (branch === protectedBranch) {
+    warn(`Você está na branch '${protectedBranch}' (protegida).`);
     dim('Commits diretos na main não são recomendados.');
 
     const choice = await select({
       message: 'O que deseja fazer?',
       choices: [
-        { name: `Trocar para '${DEVELOPMENT_BRANCH}'`, value: 'switch' },
-        { name: `Continuar na '${PROTECTED_BRANCH}'`, value: 'continue' },
+        { name: `Trocar para '${developmentBranch}'`, value: 'switch' },
+        { name: `Continuar na '${protectedBranch}'`, value: 'continue' },
         { name: 'Cancelar', value: 'cancel' },
       ],
     });
@@ -78,26 +80,26 @@ export async function runCommitFlow() {
         }
       }
 
-      let result = switchBranch(DEVELOPMENT_BRANCH);
+      let result = switchBranch(developmentBranch);
       if (!result.success) {
-        warn(`Branch '${DEVELOPMENT_BRANCH}' não existe neste projeto.`);
+        warn(`Branch '${developmentBranch}' não existe neste projeto.`);
 
         const createDev = await confirm({
-          message: `Deseja criar a branch '${DEVELOPMENT_BRANCH}'?`,
+          message: `Deseja criar a branch '${developmentBranch}'?`,
           default: true,
         });
 
         if (createDev) {
-          const createResult = createBranch(DEVELOPMENT_BRANCH);
+          const createResult = createBranch(developmentBranch);
           if (!createResult.success) {
             error(createResult.message);
             process.exit(1);
           }
-          success(`Branch '${DEVELOPMENT_BRANCH}' criada.`);
+          success(`Branch '${developmentBranch}' criada.`);
 
-          result = switchBranch(DEVELOPMENT_BRANCH);
+          result = switchBranch(developmentBranch);
           if (!result.success) {
-            error(`Não foi possível trocar para '${DEVELOPMENT_BRANCH}': ${result.message}`);
+            error(`Não foi possível trocar para '${developmentBranch}': ${result.message}`);
             process.exit(1);
           }
         } else {
@@ -106,14 +108,14 @@ export async function runCommitFlow() {
         }
       }
 
-      success(`Agora você está na branch '${DEVELOPMENT_BRANCH}'.`);
+      success(`Agora você está na branch '${developmentBranch}'.`);
       dim('Execute jarvis commit novamente para commitar suas alterações.');
       process.exit(0);
     }
 
     if (choice === 'continue') {
       const confirmed = await confirm({
-        message: chalk.red(`Tem certeza que deseja commitar diretamente na '${PROTECTED_BRANCH}'?`),
+        message: chalk.red(`Tem certeza que deseja commitar diretamente na '${protectedBranch}'?`),
         default: false,
       });
 
@@ -122,7 +124,7 @@ export async function runCommitFlow() {
         process.exit(0);
       }
 
-      warn(`Prosseguindo com commit na '${PROTECTED_BRANCH}'...`);
+      warn(`Prosseguindo com commit na '${protectedBranch}'...`);
     }
   }
 
@@ -343,7 +345,7 @@ export async function runCommitFlow() {
       }
 
       // Só pergunta sobre o merge se o release não foi feito
-      if (currentBranchAfterCommit === DEVELOPMENT_BRANCH && !releaseDone) {
+      if (currentBranchAfterCommit === developmentBranch && !releaseDone) {
         blank();
         const mergeChoice = await select({
           message: 'Deseja iniciar o merge dev → main?',
