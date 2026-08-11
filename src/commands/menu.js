@@ -15,7 +15,7 @@ export const COMMAND_CATALOG = [
   { id: 'config', section: 'projeto', label: 'jarvis config', description: 'Configura o .jarvis-dev.json do projeto.', keywords: ['jira', 'settings'], argv: ['config'] },
   { id: 'today', section: 'projeto', label: 'jarvis today', description: 'Resumo do dia (issues, PRs, status).', keywords: ['resumo', 'dia'], argv: ['today'] },
   { id: 'projects', section: 'projeto', label: 'jarvis projects', description: 'Varre subpastas e lista repositórios Git (raiz continua vinculada).', keywords: ['workspace', 'repos', 'subpastas'], argv: ['projects'] },
-  { id: 'use', section: 'projeto', label: 'jarvis use', description: 'Seleciona um projeto gerenciado e entra na pasta.', keywords: ['trocar', 'projeto', 'caminho'], argv: ['use'] },
+  { id: 'use', section: 'projeto', label: 'jarvis use', description: 'Troca para outro projeto gerenciado (abre no terminal).', keywords: ['trocar', 'projeto', 'caminho', 'selecionar'], argv: ['use'] },
   { id: 'add', section: 'projeto', label: 'jarvis add', description: 'Valida a pasta atual e adiciona à lista de projetos gerenciados.', keywords: ['adicionar', 'registrar', 'projeto'], argv: ['add'] },
 
   { id: 'commit', section: 'commit', label: 'jarvis commit', description: 'Gera mensagem de commit com IA.', keywords: ['ia', 'gemini'], argv: ['commit'] },
@@ -66,7 +66,7 @@ const SUMMARIES = {
   config: 'Configura o .jarvis-dev.json do projeto',
   today: 'Resumo do dia (issues, PRs, status)',
   projects: 'Lista repos Git nas subpastas (até 4 níveis)',
-  use: 'Seleciona projeto e entra na pasta',
+  use: 'Troca para outro projeto gerenciado',
   add: 'Adiciona a pasta atual à lista gerenciada',
   commit: 'Gera mensagem de commit com IA',
   merge: 'Merge entre branches (dev → main)',

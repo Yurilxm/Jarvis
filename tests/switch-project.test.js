@@ -35,9 +35,12 @@ describe('switch-project helpers', () => {
     prefs.addManagedProject(a, 'app-a');
     prefs.setProjectOpenMode('none');
 
-    const { listSelectableProjects, enterProject } = await import(
+    const { listSelectableProjects, enterProject, isAlreadyInProject } = await import(
       '../src/commands/switch-project.js'
     );
+
+    expect(isAlreadyInProject(a)).toBe(true);
+    expect(isAlreadyInProject(workspace)).toBe(false);
 
     const list = listSelectableProjects(workspace);
     expect(list.map((p) => p.name).sort()).toEqual(['app-a', 'app-b']);

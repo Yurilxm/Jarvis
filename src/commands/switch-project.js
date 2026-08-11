@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { select, confirm, input } from '@inquirer/prompts';
-import { discoverProjects } from '../utils/project-scanner.js';
+import { discoverProjects, isGitRoot } from '../utils/project-scanner.js';
+import { resolveGitProjectRoot } from './add-project.js';
 import {
   getWorkspaceRoot,
   setWorkspaceRoot,
@@ -29,6 +30,23 @@ import {
   chalk,
   muted,
 } from '../ui.js';
+
+/**
+ * True se o cwd já é (ou está na raiz de) um projeto Git válido.
+ * @param {string} [dir=process.cwd()]
+ * @returns {boolean}
+ */
+export function isAlreadyInProject(dir = process.cwd()) {
+  const absolute = path.resolve(dir);
+  if (isGitRoot(absolute)) return true;
+
+  const managed = getManagedProjects().some((p) => p.path === absolute);
+  if (managed) return true;
+
+  const root = resolveGitProjectRoot(absolute);
+  // Só conta como "já no projeto" se estamos na raiz do repo (não numa pasta-pai solta)
+  return Boolean(root && root === absolute);
+}
 
 /**
  * Monta a lista de projetos gerenciados + descobertos na workspace.
@@ -60,8 +78,7 @@ export function listSelectableProjects(launchCwd = process.cwd()) {
   }
 
   // Se a pasta atual é um git root e não está na lista, inclui
-  const gitMarker = path.join(cwd, '.git');
-  if (fs.existsSync(gitMarker) && !byPath.has(cwd)) {
+  if (isGitRoot(cwd) && !byPath.has(cwd)) {
     byPath.set(cwd, {
       name: path.basename(cwd),
       path: cwd,
@@ -102,7 +119,9 @@ export function enterProject(projectPath, { remember = true, manage = true } = {
 }
 
 /**
- * Picker de projeto. No lançamento só aparece se houver opções e preferência ligada.
+ * Picker de projeto.
+ * No lançamento (!force): só aparece se a pasta atual NÃO for já um projeto.
+ * Com force (jarvis use / menu): sempre pergunta.
  * @param {{ force?: boolean }} [options]
  * @returns {Promise<string|null>}
  */
@@ -110,13 +129,22 @@ export async function selectProjectInteractive({ force = false } = {}) {
   if (!force && !isProjectPickerOnLaunch()) return null;
   if (!process.stdin.isTTY) return null;
 
+  const launchCwd = path.resolve(process.cwd());
+
+  // Já está dentro de um projeto → abre o menu direto (troca via jarvis use)
+  if (!force && isAlreadyInProject(launchCwd)) {
+    addManagedProject(launchCwd);
+    setLastProjectPath(launchCwd);
+    clearShellCwdRequest();
+    return null;
+  }
+
   clearShellCwdRequest();
 
-  const launchCwd = process.cwd();
   const projects = listSelectableProjects(launchCwd);
 
-  const others = projects.filter((p) => p.path !== path.resolve(launchCwd));
-  if (!force && others.length === 0 && projects.length <= 1) return null;
+  // Sem projetos para escolher → segue sem picker
+  if (!force && projects.length === 0) return null;
 
   printBanner();
   const workspace = getWorkspaceRoot() || launchCwd;
