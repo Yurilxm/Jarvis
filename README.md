@@ -61,8 +61,8 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 
 ### Interface
 - Banner ASCII dinâmico com a versão atual
-- Menu interativo ao rodar `jarvis` (ou só lista de comandos, configurável)
-- Estilo de menu clássico ou ao vivo (filtro enquanto digita)
+- Menu interativo via **@clack/prompts** (autocomplete estável) ao rodar `jarvis`
+- Modo CLI configurável: só lista os comandos sem abrir o menu
 - Spinners para indicar operações em andamento
 - Caixas formatadas para melhorar a leitura
 - Sistema de ajuda organizado por categorias
@@ -181,8 +181,8 @@ Além do `.jarvis-dev.json`, o `jarvis config` permite ajustar (salvos em `~/.ja
 
 | Preferência | Opções | Padrão |
 |---|---|---|
-| Ao abrir `jarvis` sem args | `menu` (interativo) ou `commands` (só lista CLI) | `menu` |
-| Estilo do menu | `live` ou `classic` | `live` |
+| Ao abrir `jarvis` sem args | `menu` (interativo Clack) ou `commands` (só lista CLI) | `menu` |
+| Estilo do menu | `live` ou `classic` (ambos Clack autocomplete) | `live` |
 | Ao selecionar projeto | `new-tab`, `new-window`, `shell-cd`, `none` | `new-tab` |
 | Workspace / projetos | pasta-pai, lista gerenciada, seletor no lançamento | — |
 

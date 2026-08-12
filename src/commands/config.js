@@ -54,8 +54,8 @@ export async function runConfig() {
   while (true) {
     const menuStyle = getMenuStyle();
     const menuLabel = menuStyle === 'classic'
-      ? 'clássico (busca + caixas estáticas)'
-      : 'ao vivo (filtra as boxes ao digitar)';
+      ? 'clássico (Clack autocomplete)'
+      : 'interativo (Clack autocomplete)';
     const launchMode = getLaunchMode();
     const launchLabel = launchMode === 'commands'
       ? 'só lista os comandos (CLI)'
@@ -184,14 +184,14 @@ export async function runConfig() {
         message: 'Como prefere navegar no menu do Jarvis?',
         choices: [
           {
-            name: 'Ao vivo — boxes filtram enquanto digita (padrão)',
+            name: 'Interativo — busca Clack (padrão)',
             value: 'live',
-            description: 'Menu atual com redraw e filtro em tempo real.',
+            description: 'Autocomplete estável (@clack/prompts).',
           },
           {
-            name: 'Clássico — caixas estáticas + busca com setas',
+            name: 'Clássico — mesma busca Clack (rótulo clássico)',
             value: 'classic',
-            description: 'Estilo antigo: catálogo fixo e search do Inquirer.',
+            description: 'Mesmo motor estável; só muda o texto de intro.',
           },
         ],
         default: menuStyle,

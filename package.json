@@ -18,6 +18,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@clack/prompts": "^1.7.0",
     "@inquirer/prompts": "^8.5.2",
     "boxen": "^8.0.1",
     "chalk": "^6.0.0",

@@ -1,5 +1,4 @@
-import { input, search, Separator } from '@inquirer/prompts';
-import readline from 'node:readline';
+import { autocomplete, isCancel, cancel, intro, outro, text } from '@clack/prompts';
 import { printBanner, printBox, info, dim, blank, chalk, muted } from '../ui.js';
 import { getProtectedBranch } from '../config/branches.js';
 import { getMenuStyle } from '../config/preferences.js';
@@ -57,7 +56,7 @@ export const COMMAND_CATALOG = [
   { id: 'history', section: 'outros', label: 'jarvis history', description: 'Histórico de commits/pushes do Jarvis.', keywords: ['timeline'], argv: ['history'] },
 ];
 
-/** Textos curtos para as caixas (estilo antigo). */
+/** Textos curtos para as caixas / hints. */
 const SUMMARIES = {
   init: 'Inicializa um repositório Git',
   status: 'Mostra status do repositório',
@@ -140,7 +139,6 @@ function matchesEntry(entry, term) {
   if (labelTokens.some((t) => t.startsWith(q))) return true;
   if (keywords.some((k) => k.startsWith(q) || k.includes(q))) return true;
 
-  // consultas maiores também batem em seção / descrição
   if (q.length >= 3) {
     if (section.includes(q)) return true;
     if (summary.includes(q)) return true;
@@ -159,78 +157,27 @@ function getFilteredEntries(term) {
 
 export { matchesEntry, getFilteredEntries, normalize };
 
-function clearScreen() {
-  process.stdout.write('\x1b[2J\x1b[H');
-}
+function buildAutocompleteOptions() {
+  const meta = [
+    {
+      value: '__help_text__',
+      label: '⋯ ver catálogo em texto',
+      hint: 'Lista todas as seções sem executar',
+    },
+    {
+      value: '__exit__',
+      label: '⋯ sair',
+      hint: 'Encerra o menu',
+    },
+  ];
 
-/**
- * Desenha só as boxes com comandos que batem no filtro.
- * @param {string} filter
- * @param {number} cursorIndex índice no array filtrado
- */
-function printLiveCatalog(filter, cursorIndex) {
-  const filtered = getFilteredEntries(filter);
+  const commands = COMMAND_CATALOG.map((entry) => ({
+    value: entry.id,
+    label: `${DISPLAY_LABELS[entry.id] || entry.label}`,
+    hint: `${entry.section} · ${SUMMARIES[entry.id] || entry.description}`,
+  }));
 
-  if (filtered.length === 0) {
-    printBox(
-      muted('Nenhum comando encontrado para este filtro.\nApague caracteres para ampliar a lista.'),
-      { title: 'sem resultados', borderColor: 'yellow' }
-    );
-  } else {
-    const sections = [];
-    for (const entry of filtered) {
-      let bucket = sections.find((s) => s.title === entry.section);
-      if (!bucket) {
-        bucket = { title: entry.section, items: [] };
-        sections.push(bucket);
-      }
-      bucket.items.push(entry);
-    }
-
-    let flatIndex = 0;
-    for (const section of sections) {
-      const sectionHasCursor =
-        cursorIndex >= 0 &&
-        section.items.some((entry) => filtered.indexOf(entry) === cursorIndex);
-
-      const lines = section.items.map((entry) => {
-        const isActive = cursorIndex >= 0 && flatIndex === cursorIndex;
-        flatIndex += 1;
-        const label = DISPLAY_LABELS[entry.id] || entry.label;
-        const summary = SUMMARIES[entry.id] || entry.description;
-        const marker = isActive ? chalk.cyan('›') : ' ';
-        const cmd = isActive ? chalk.green.bold(label.padEnd(36)) : chalk.green(label.padEnd(36));
-        const desc = isActive ? chalk.white(summary) : muted(summary);
-        return `${marker} ${cmd} ${desc}`;
-      });
-
-      printBox(lines.join('\n'), {
-        title: section.title,
-        borderColor: sectionHasCursor ? 'green' : 'cyan',
-      });
-    }
-  }
-
-  dim(`  Branch protegida: ${chalk.yellow(getProtectedBranch())}`);
-  blank();
-  const shown = chalk.cyan(filter || muted('(digite para filtrar)'));
-  console.log(`  ${chalk.bold('Filtro:')} ${shown}${chalk.cyan('▌')}`);
-  dim('  ↑↓ navega · Enter executa · Backspace apaga · Esc cancela');
-  blank();
-}
-
-function restoreStdin() {
-  if (process.stdin.isTTY) {
-    try {
-      process.stdin.setRawMode(false);
-    } catch {
-      // ignore
-    }
-  }
-  process.stdin.removeAllListeners('keypress');
-  if (process.stdin.isTTY) {
-    process.stdin.pause();
-  }
+  return [...meta, ...commands];
 }
 
 /**
@@ -251,190 +198,86 @@ async function resolveMenuEntry(entry) {
 
   const argv = [...entry.argv];
   if (entry.needsArg) {
-    try {
-      const value = await input({
-        message: entry.needsArg.message,
-        default: entry.needsArg.default,
-        validate: entry.needsArg.validate,
-      });
-      argv.push(value.trim());
-    } catch {
-      info('Cancelado.');
+    const value = await text({
+      message: entry.needsArg.message,
+      initialValue: entry.needsArg.default || '',
+      validate: (v) => {
+        if (!entry.needsArg.validate) return undefined;
+        const result = entry.needsArg.validate(String(v ?? ''));
+        if (result === true) return undefined;
+        return typeof result === 'string' ? result : 'Valor inválido';
+      },
+    });
+
+    if (isCancel(value)) {
+      cancel('Cancelado.');
       return null;
     }
+
+    argv.push(String(value).trim());
   }
 
   return { argv };
 }
 
 /**
- * Estilo clássico: caixas estáticas + busca @inquirer (navegação antiga).
+ * Menu interativo via @clack/prompts (autocomplete).
+ * Substitui o raw-mode antigo e o search+boxes bugados.
+ * @param {'live' | 'classic'} style
  * @returns {Promise<{ argv: string[] } | null>}
  */
-async function runClassicMenu() {
+async function runClackMenu(style = 'live') {
   printBanner();
-  printStaticCatalog();
-  dim('  Digite para filtrar · ↑↓ navega (descrição abaixo) · Enter executa');
+  intro(style === 'classic' ? 'Menu clássico' : 'Menu interativo');
+  dim(`  Branch protegida: ${chalk.yellow(getProtectedBranch())}`);
+  dim('  Digite para filtrar · ↑↓ navega · Enter executa · Esc cancela');
   blank();
 
-  let selectedId;
-  try {
-    selectedId = await search({
-      message: 'O que você quer fazer?',
-      pageSize: 14,
-      source: async (term) => {
-        const choices = [
-          {
-            name: muted('⋯ ver catálogo em texto'),
-            value: '__help_text__',
-            description: 'Lista todas as seções de comandos sem executar nada.',
-          },
-          {
-            name: muted('⋯ sair'),
-            value: '__exit__',
-            description: 'Encerra o menu do Jarvis.',
-          },
-          new Separator(),
-        ];
+  const selectedId = await autocomplete({
+    message: 'O que você quer fazer?',
+    placeholder: 'commit, jira, pr, use…',
+    maxItems: 12,
+    options: buildAutocompleteOptions(),
+    filter: (searchTerm, option) => {
+      if (option.value === '__help_text__' || option.value === '__exit__') {
+        if (!searchTerm?.trim()) return true;
+        return normalize(option.label).includes(normalize(searchTerm));
+      }
+      const entry = COMMAND_CATALOG.find((c) => c.id === option.value);
+      if (!entry) return false;
+      return matchesEntry(entry, searchTerm);
+    },
+  });
 
-        const filtered = getFilteredEntries(term);
-        let lastSection = null;
-        for (const entry of filtered) {
-          if (entry.section !== lastSection) {
-            choices.push(new Separator(chalk.cyan(`— ${entry.section} —`)));
-            lastSection = entry.section;
-          }
-          choices.push({
-            name: DISPLAY_LABELS[entry.id] || entry.label,
-            value: entry.id,
-            description: SUMMARIES[entry.id] || entry.description,
-          });
-        }
-
-        if (filtered.length === 0) {
-          choices.push({
-            name: muted('Nenhum comando encontrado'),
-            value: '__noop__',
-            description: 'Apague caracteres para ampliar a lista.',
-            disabled: true,
-          });
-        }
-
-        return choices;
-      },
-    });
-  } catch {
-    info('Menu cancelado.');
+  if (isCancel(selectedId)) {
+    cancel('Menu cancelado.');
     return null;
   }
 
-  if (selectedId === '__exit__' || selectedId === '__noop__') {
-    info('Até logo.');
+  if (selectedId === '__exit__') {
+    outro('Até logo.');
     return null;
   }
 
   if (selectedId === '__help_text__') {
+    outro('Abrindo catálogo…');
     return { argv: ['help-text'] };
   }
 
   const entry = COMMAND_CATALOG.find((c) => c.id === selectedId) || null;
+  if (!entry) {
+    cancel('Comando não encontrado.');
+    return null;
+  }
+
+  outro(DISPLAY_LABELS[entry.id] || entry.label);
   blank();
   return resolveMenuEntry(entry);
 }
 
 /**
- * Menu ao vivo: boxes filtram conforme você digita.
- * @returns {Promise<{ argv: string[] } | null>}
- */
-async function runLiveMenu() {
-  if (!process.stdin.isTTY) {
-    info('Terminal interativo necessário para o menu.');
-    dim('Use um comando direto, ex: jarvis status');
-    return null;
-  }
-
-  readline.emitKeypressEvents(process.stdin);
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
-
-  let filter = '';
-  let cursor = 0;
-
-  const redraw = () => {
-    const items = getFilteredEntries(filter);
-    if (cursor >= items.length) cursor = Math.max(0, items.length - 1);
-    if (cursor < 0) cursor = 0;
-    clearScreen();
-    printBanner();
-    printLiveCatalog(filter, cursor);
-  };
-
-  redraw();
-
-  return new Promise((resolve) => {
-    const finish = async (entry) => {
-      restoreStdin();
-      clearScreen();
-      printBanner();
-      resolve(await resolveMenuEntry(entry));
-    };
-
-    const onKey = (str, key) => {
-      if (!key) return;
-
-      if (key.ctrl && key.name === 'c') {
-        restoreStdin();
-        process.exit(0);
-      }
-
-      if (key.name === 'escape') {
-        finish(null);
-        return;
-      }
-
-      if (key.name === 'return') {
-        const items = getFilteredEntries(filter);
-        if (items.length === 0) return;
-        finish(items[cursor]);
-        return;
-      }
-
-      if (key.name === 'up') {
-        const items = getFilteredEntries(filter);
-        if (items.length === 0) return;
-        cursor = (cursor - 1 + items.length) % items.length;
-        redraw();
-        return;
-      }
-
-      if (key.name === 'down') {
-        const items = getFilteredEntries(filter);
-        if (items.length === 0) return;
-        cursor = (cursor + 1) % items.length;
-        redraw();
-        return;
-      }
-
-      if (key.name === 'backspace') {
-        filter = filter.slice(0, -1);
-        cursor = 0;
-        redraw();
-        return;
-      }
-
-      if (str && !key.ctrl && !key.meta && str.length === 1 && str >= ' ') {
-        filter += str;
-        cursor = 0;
-        redraw();
-      }
-    };
-
-    process.stdin.on('keypress', onKey);
-  });
-}
-
-/**
- * Abre o menu conforme preferência (live | classic).
+ * Abre o menu interativo (classic | live → ambos Clack).
+ * O modo CLI (`launchMode: commands`) não passa por aqui.
  * @returns {Promise<{ argv: string[] } | null>}
  */
 export async function runInteractiveMenu() {
@@ -445,19 +288,34 @@ export async function runInteractiveMenu() {
   }
 
   const style = getMenuStyle();
-  if (style === 'classic') {
-    return runClassicMenu();
-  }
-  return runLiveMenu();
+  return runClackMenu(style === 'classic' ? 'classic' : 'live');
 }
 
-function printStaticCatalog() {
-  printLiveCatalog('', -1);
-}
-
-/** Mantido para compatibilidade (catálogo estático completo). */
+/**
+ * Catálogo estático em boxes (ajuda / compatibilidade).
+ * Não usa raw mode — seguro no Windows.
+ */
 export function printCatalogBoxes() {
-  clearScreen();
   printBanner();
-  printStaticCatalog();
+  const sections = [];
+  for (const entry of COMMAND_CATALOG) {
+    let bucket = sections.find((s) => s.title === entry.section);
+    if (!bucket) {
+      bucket = { title: entry.section, items: [] };
+      sections.push(bucket);
+    }
+    bucket.items.push(entry);
+  }
+
+  for (const section of sections) {
+    const lines = section.items.map((entry) => {
+      const label = DISPLAY_LABELS[entry.id] || entry.label;
+      const summary = SUMMARIES[entry.id] || entry.description;
+      return `${chalk.green(label.padEnd(36))} ${muted(summary)}`;
+    });
+    printBox(lines.join('\n'), { title: section.title });
+  }
+
+  dim(`  Branch protegida: ${chalk.yellow(getProtectedBranch())}`);
+  blank();
 }
