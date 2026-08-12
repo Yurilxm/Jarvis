@@ -22,8 +22,8 @@ echo "✔ Node, npm e Git encontrados."
 # 2. Configurar identidade Git
 echo ""
 echo ">>> Configurando identidade do Git"
-read -r -p "Nome (ex: Felipe Silva): " git_name
-read -r -p "Email (ex: felipe@empresa.com): " git_email
+read -r -p "Nome (ex: Nome Sobrenome): " git_name
+read -r -p "Email (ex: usuario@empresa.com): " git_email
 if [ -z "$git_name" ] || [ -z "$git_email" ]; then
   echo "Nome e email são obrigatórios."
   exit 1
@@ -62,15 +62,17 @@ else
 fi
 
 # 5. Configurar credenciais pessoais do Jarvis
-echo ""
-echo ">>> Credenciais pessoais do Jarvis"
-echo "Vamos configurar suas chaves de API (Gemini, GitHub, Jira)."
-echo ""
+...
 if command -v jarvis &> /dev/null; then
   jarvis config
 else
   echo "Após instalar o Jarvis globalmente, execute: jarvis config"
 fi
+
+# 6. Setup Linux (wrapper para cd automático)
+echo ""
+echo ">>> Setup Linux — integração com o shell"
+bash /srv/jarvis-dev/scripts/setup-linux.sh
 
 echo ""
 echo "========================================"
@@ -83,4 +85,5 @@ echo "2. Teste a conexão: ssh -T git@192.100.0.170 -p 2222"
 echo "3. Navegue até um projeto e use:"
 echo "     jarvis status"
 echo "     jarvis c"
+echo "     jarvis use   # agora troca o diretório no shell"
 echo ""
