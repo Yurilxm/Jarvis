@@ -1,6 +1,6 @@
 import { isGitRepo, getGitStatus } from '../git/status.js';
 import { getCurrentBranch, listBranches } from '../git/branch.js';
-import { PROTECTED_BRANCH } from '../config/branches.js';
+import { getProtectedBranch } from '../config/branches.js';
 import {
   printBox,
   printFileList,
@@ -14,6 +14,7 @@ import {
 } from '../ui.js';
 
 export function showStatus() {
+  const protectedBranch = getProtectedBranch();
   if (!isGitRepo()) {
     error('Este diretório não é um repositório Git.');
     dim('Entre na pasta de um projeto com git, ou rode: jarvis init');
@@ -24,14 +25,14 @@ export function showStatus() {
   const branches = listBranches();
   const status = getGitStatus();
 
-  const branchLabel = branch === PROTECTED_BRANCH
+  const branchLabel = branch === protectedBranch
     ? chalk.yellow(`${branch} (protegida)`)
     : chalk.green(branch);
 
   blank();
   printBox(
     `${chalk.bold('Branch')}  ${branchLabel}\n${muted('Locais')}  ${branches.map((b) =>
-      b === PROTECTED_BRANCH ? chalk.yellow(b) : b
+      b === protectedBranch ? chalk.yellow(b) : b
     ).join(muted(' · '))}`,
     { title: 'status' }
   );

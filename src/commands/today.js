@@ -1,6 +1,6 @@
 import { isGitRepo, getGitStatus } from '../git/status.js';
 import { getCurrentBranch, listBranches } from '../git/branch.js';
-import { PROTECTED_BRANCH } from '../config/branches.js';
+import { getProtectedBranch } from '../config/branches.js';
 import { getProjectConfig } from '../config/project.js';
 import { getRepoInfo, listPullRequests } from '../github/pr.js';
 import { listIssues } from '../jira/client.js';
@@ -15,6 +15,7 @@ import {
 } from '../ui.js';
 
 export async function runToday() {
+  const protectedBranch = getProtectedBranch();
   printBanner();
   info('Preparando seu resumo do dia...\n');
 
@@ -24,7 +25,7 @@ export async function runToday() {
     const status = getGitStatus();
     const total = status.staged.length + status.modified.length + status.deleted.length + status.untracked.length;
 
-    const branchLabel = branch === PROTECTED_BRANCH
+    const branchLabel = branch === protectedBranch
       ? chalk.yellow(`${branch} (protegida)`)
       : chalk.green(branch);
 

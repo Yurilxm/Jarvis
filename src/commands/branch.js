@@ -6,7 +6,7 @@ import {
   createBranch,
   hasUncommittedChanges,
 } from '../git/branch.js';
-import { PROTECTED_BRANCH } from '../config/branches.js';
+import { getProtectedBranch } from '../config/branches.js';
 import { confirm } from '@inquirer/prompts';
 import {
   info,
@@ -51,13 +51,14 @@ export async function handleBranchCommand(sub, arg) {
 }
 
 function listBranchesCmd() {
+  const protectedBranch = getProtectedBranch();
   const branches = listBranches();
   const current = getCurrentBranch();
 
   section('Branches locais');
   for (const branch of branches) {
     const marker = branch === current ? chalk.green('●') : muted('○');
-    const name = branch === PROTECTED_BRANCH
+    const name = branch === protectedBranch
       ? chalk.yellow(`${branch} (protegida)`)
       : branch === current
         ? chalk.green(branch)

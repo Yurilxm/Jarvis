@@ -46,6 +46,8 @@ function buildWarning(count) {
   return null;
 }
 
+export { buildWarning };
+
 /**
  * Verifica a cota atual SEM incrementar.
  * @returns {Promise<{ warning: string|null }>}

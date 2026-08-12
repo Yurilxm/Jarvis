@@ -1,5 +1,5 @@
 import { getCurrentBranch, hasUncommittedChanges, switchBranch, mergeBranch, hasUnpushedCommits } from '../git/branch.js';
-import { PROTECTED_BRANCH, DEVELOPMENT_BRANCH } from '../config/branches.js';
+import { getProtectedBranch, getDevelopmentBranch } from '../config/branches.js';
 import { confirm } from '@inquirer/prompts';
 import { execSync } from 'node:child_process';
 import {
@@ -20,8 +20,10 @@ import {
  * @param {string|null} targetArg - Branch de destino (opcional, default: main)
  */
 export async function runMergeFlow(sourceArg = null, targetArg = null) {
-  const source = sourceArg || DEVELOPMENT_BRANCH;
-  const target = targetArg || PROTECTED_BRANCH;
+  const protectedBranch = getProtectedBranch();
+  const developmentBranch = getDevelopmentBranch();
+  const source = sourceArg || developmentBranch;
+  const target = targetArg || protectedBranch;
 
   const currentBranch = getCurrentBranch();
 
@@ -155,8 +157,8 @@ export async function runMergeFlow(sourceArg = null, targetArg = null) {
     }
   }
 
-  const returnBranch = (target === PROTECTED_BRANCH && source === DEVELOPMENT_BRANCH)
-    ? DEVELOPMENT_BRANCH
+  const returnBranch = (target === protectedBranch && source === developmentBranch)
+    ? developmentBranch
     : originalBranch;
 
   if (getCurrentBranch() !== returnBranch) {
