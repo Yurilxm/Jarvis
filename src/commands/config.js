@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { input, select } from '@inquirer/prompts';
 import {
   getMenuStyle,
@@ -31,6 +32,146 @@ const OPEN_MODE_LABELS = {
   'shell-cd': 'cd no shell atual (shim)',
   none: 'não abre terminal (só cwd do Jarvis)',
 };
+
+// ─── Helpers do .env pessoal ──────────────────────────────
+
+function getUserEnvPath() {
+  return path.join(os.homedir(), '.jarvis-dev', '.env');
+}
+
+function readUserEnv() {
+  const envPath = getUserEnvPath();
+  const defaults = { geminiKey: '', geminiModel: 'gemini-flash-latest', githubToken: '', jiraDomain: '', jiraEmail: '', jiraToken: '' };
+  
+  if (!fs.existsSync(envPath)) return defaults;
+  
+  try {
+    const content = fs.readFileSync(envPath, 'utf-8');
+    const result = { ...defaults };
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex === -1) continue;
+      const key = trimmed.substring(0, eqIndex).trim();
+      const value = trimmed.substring(eqIndex + 1).trim();
+      
+      if (key === 'GEMINI_API_KEY') result.geminiKey = value;
+      else if (key === 'GEMINI_MODEL') result.geminiModel = value;
+      else if (key === 'GITHUB_TOKEN') result.githubToken = value;
+      else if (key === 'JIRA_DOMAIN') result.jiraDomain = value;
+      else if (key === 'JIRA_EMAIL') result.jiraEmail = value;
+      else if (key === 'JIRA_API_TOKEN') result.jiraToken = value;
+    }
+    return result;
+  } catch {
+    return defaults;
+  }
+}
+
+function saveUserEnv(data) {
+  const envPath = getUserEnvPath();
+  const dir = path.dirname(envPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    try { fs.chmodSync(dir, 0o700); } catch { /* Windows */ }
+  }
+  
+  const content = [
+    '# Jarvis Dev — Configuração pessoal',
+    '# Gerado por jarvis config',
+    `GEMINI_API_KEY=${data.geminiKey || ''}`,
+    `GEMINI_MODEL=${data.geminiModel || 'gemini-flash-latest'}`,
+    `GITHUB_TOKEN=${data.githubToken || ''}`,
+    `JIRA_DOMAIN=${data.jiraDomain || ''}`,
+    `JIRA_EMAIL=${data.jiraEmail || ''}`,
+    `JIRA_API_TOKEN=${data.jiraToken || ''}`,
+    '',
+  ].join('\n');
+  
+  fs.writeFileSync(envPath, content, 'utf-8');
+  try { fs.chmodSync(envPath, 0o600); } catch { /* Windows */ }
+}
+
+function maskKey(key) {
+  if (!key) return muted('não configurada');
+  if (key.length <= 8) return '••••••••';
+  return key.substring(0, 4) + '••••' + key.substring(key.length - 4);
+}
+
+async function setupUserEnv() {
+  while (true) {
+    const current = readUserEnv();
+    const envExists = fs.existsSync(getUserEnvPath());
+    
+    blank();
+    if (envExists) {
+      printBox(
+        `${chalk.bold('Gemini API Key')}  ${maskKey(current.geminiKey)}\n` +
+        `${chalk.bold('Gemini Model')}   ${current.geminiModel || 'gemini-flash-latest'}\n` +
+        `${chalk.bold('GitHub Token')}   ${maskKey(current.githubToken)}\n` +
+        `${chalk.bold('Jira Domain')}    ${current.jiraDomain || muted('não configurado')}\n` +
+        `${chalk.bold('Jira Email')}     ${current.jiraEmail || muted('não configurado')}\n` +
+        `${chalk.bold('Jira Token')}     ${maskKey(current.jiraToken)}`,
+        { title: 'credenciais atuais' }
+      );
+    } else {
+      info('Nenhum arquivo .env pessoal encontrado.');
+      dim('As credenciais serão salvas em ~/.jarvis-dev/.env');
+      dim('Este arquivo NÃO é compartilhado e fica protegido na sua pasta pessoal.');
+    }
+    
+    const action = await select({
+      message: 'O que deseja fazer?',
+      choices: [
+        { name: 'Configurar Gemini API Key', value: 'geminiKey' },
+        { name: 'Configurar Gemini Model', value: 'geminiModel' },
+        { name: 'Configurar GitHub Token', value: 'githubToken' },
+        { name: 'Configurar Jira Domain', value: 'jiraDomain' },
+        { name: 'Configurar Jira Email', value: 'jiraEmail' },
+        { name: 'Configurar Jira API Token', value: 'jiraToken' },
+        { name: 'Salvar e sair', value: 'save' },
+        { name: 'Sair sem salvar', value: 'exit' },
+      ],
+    });
+
+    if (action === 'exit') {
+      info('Configuração de credenciais cancelada.');
+      return;
+    }
+    
+    if (action === 'save') {
+      saveUserEnv(current);
+      success('Credenciais salvas com sucesso!');
+      dim(`Arquivo: ${getUserEnvPath()}`);
+      dim('Reinicie o terminal para que as novas chaves entrem em vigor.');
+      return;
+    }
+    
+    // Editar campo específico
+    const fieldLabels = {
+      geminiKey: 'Gemini API Key',
+      geminiModel: 'Gemini Model',
+      githubToken: 'GitHub Token',
+      jiraDomain: 'Jira Domain',
+      jiraEmail: 'Jira Email',
+      jiraToken: 'Jira API Token',
+    };
+    
+    const label = fieldLabels[action];
+    const currentValue = current[action] || '';
+    
+    const newValue = await input({
+      message: `${label}:`,
+      default: currentValue,
+    });
+    
+    current[action] = newValue.trim();
+    // Continua o loop para mostrar o menu novamente
+  }
+}
+
+// ─── Comando principal ────────────────────────────────────
 
 export async function runConfig() {
   printBanner();
@@ -104,6 +245,7 @@ export async function runConfig() {
         { name: 'UI — ao selecionar projeto (aba / janela / cd)', value: 'ui.projectOpenMode' },
         { name: 'UI — estilo do menu (clássico / ao vivo)', value: 'ui.menuStyle' },
         { name: 'Projetos — workspace e lista gerenciada', value: 'ui.projects' },
+        { name: 'Credenciais — configurar .env pessoal (Gemini, GitHub, Jira)', value: 'userEnv' },
         { name: 'Salvar projeto e sair', value: 'save' },
         { name: 'Sair sem salvar o projeto', value: 'exit' },
       ],
@@ -121,6 +263,11 @@ export async function runConfig() {
       dim('Este arquivo pode ser commitado no Git (não contém dados sensíveis).');
       dim('Preferências de interface já são salvas automaticamente.');
       return;
+    }
+
+    if (action === 'userEnv') {
+      await setupUserEnv();
+      continue;
     }
 
     if (action === 'ui.launchMode') {
