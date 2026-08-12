@@ -24,7 +24,7 @@ describe('cli routing', () => {
     );
   });
 
-  it('resolve alias de projects', () => {
-    expect(resolveCommand('w')).toBe('projects');
+  it('resolve alias de scan', () => {
+    expect(resolveCommand('w')).toBe('scan');
   });
 });

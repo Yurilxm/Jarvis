@@ -13,7 +13,7 @@ describe('menu — catálogo', () => {
         'history',
         'analyze',
         'check',
-        'projects',
+        'scan',
       ])
     );
   });

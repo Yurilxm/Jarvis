@@ -13,7 +13,7 @@ export const COMMAND_CATALOG = [
   { id: 'update', section: 'projeto', label: 'jarvis update', description: 'Atualiza o Jarvis (pull + npm install).', keywords: ['upgrade', 'npm'], argv: ['update'] },
   { id: 'config', section: 'projeto', label: 'jarvis config', description: 'Configura o .jarvis-dev.json do projeto.', keywords: ['jira', 'settings'], argv: ['config'] },
   { id: 'today', section: 'projeto', label: 'jarvis today', description: 'Resumo do dia (issues, PRs, status).', keywords: ['resumo', 'dia'], argv: ['today'] },
-  { id: 'projects', section: 'projeto', label: 'jarvis projects', description: 'Varre subpastas e lista repositórios Git (raiz continua vinculada).', keywords: ['workspace', 'repos', 'subpastas'], argv: ['projects'] },
+  { id: 'scan', section: 'projeto', label: 'jarvis scan', description: 'Varre subpastas e lista repositórios Git (raiz continua vinculada).', keywords: ['workspace', 'repos', 'subpastas', 'projects', 'varrer'], argv: ['scan'] },
   { id: 'use', section: 'projeto', label: 'jarvis use', description: 'Troca para outro projeto gerenciado (abre no terminal).', keywords: ['trocar', 'projeto', 'caminho', 'selecionar'], argv: ['use'] },
   { id: 'add', section: 'projeto', label: 'jarvis add', description: 'Valida a pasta atual e adiciona à lista de projetos gerenciados.', keywords: ['adicionar', 'registrar', 'projeto'], argv: ['add'] },
 
@@ -64,7 +64,7 @@ const SUMMARIES = {
   update: 'Atualiza o Jarvis (pull + npm install)',
   config: 'Configura o .jarvis-dev.json do projeto',
   today: 'Resumo do dia (issues, PRs, status)',
-  projects: 'Lista repos Git nas subpastas (até 4 níveis)',
+  scan: 'Varre subpastas e lista repos Git (até 4 níveis)',
   use: 'Troca para outro projeto gerenciado',
   add: 'Adiciona a pasta atual à lista gerenciada',
   commit: 'Gera mensagem de commit com IA',
@@ -114,7 +114,7 @@ const DISPLAY_LABELS = {
   'jira-list': 'jarvis jira list [active|all|done]',
   'jira-view': 'jarvis jira view <issue>',
   'jira-move': 'jarvis jira move <issue>',
-  projects: 'jarvis projects [profundidade]',
+  scan: 'jarvis scan [profundidade]',
   add: 'jarvis add [caminho]',
 };
 

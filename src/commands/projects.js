@@ -42,7 +42,7 @@ export function showProjects({ maxDepth = 4 } = {}) {
 
   if (result.projects.length === 0) {
     info(`Nenhum repositório Git encontrado nas subpastas (até profundidade ${result.maxDepth}).`);
-    dim('Ex.: pasta-pai/projeto-a/.git  →  jarvis projects');
+    dim('Ex.: pasta-pai/projeto-a/.git  →  jarvis scan');
     blank();
     return result;
   }

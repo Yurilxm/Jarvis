@@ -68,7 +68,7 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Sistema de ajuda organizado por categorias
 
 ### Workspace e múltiplos projetos
-- Detecta repositórios Git em subpastas (`jarvis projects`)
+- Detecta repositórios Git em subpastas (`jarvis scan`)
 - Lista de projetos gerenciados (`jarvis add`, `jarvis use`)
 - Ao selecionar um projeto, abre o caminho em **nova aba do Windows Terminal** (padrão)
 - Preferências globais em `~/.jarvis/preferences.json`
@@ -226,7 +226,7 @@ Rode `jarvis` sem argumentos para o menu (ou a lista de comandos, conforme a pre
 | `jarvis update` | Atualiza o Jarvis usando `git pull` e `npm install` |
 | `jarvis config` | Configura projeto e preferências (menu, workspace, abertura de pasta) |
 | `jarvis today` | Exibe o resumo do dia (issues, PRs, status) |
-| `jarvis projects [n]` | Lista repos Git nas subpastas (até n níveis, padrão 4) |
+| `jarvis scan [n]` | Varre subpastas e lista repos Git (até n níveis, padrão 4) |
 | `jarvis add [path]` | Valida a pasta e adiciona à lista de projetos gerenciados |
 | `jarvis use` | Seleciona um projeto e abre o caminho no terminal |
 | `jarvis setup` | Setup Windows: libera `jarvis` sem `.cmd` + shim PowerShell |
@@ -301,7 +301,7 @@ Rode `jarvis` sem argumentos para o menu (ou a lista de comandos, conforme a pre
 | `jarvis ignore` | Gerencia a lista de arquivos ignorados com IA ou manualmente |
 | `jarvis history` | Mostra o histórico de commits e pushes realizados pelo Jarvis |
 
-> ⌨️ **Atalhos:** `jarvis c` (commit), `jarvis s` (status), `jarvis m` (merge), `jarvis b` (branch), `jarvis p` (pull), `jarvis u` (update), `jarvis r` (review), `jarvis d` (docs), `jarvis h` (history), `jarvis i` (init), `jarvis j` (jira), `jarvis t` (today), `jarvis a` (analyze), `jarvis w` (projects)
+> ⌨️ **Atalhos:** `jarvis c` (commit), `jarvis s` (status), `jarvis m` (merge), `jarvis b` (branch), `jarvis p` (pull), `jarvis u` (update), `jarvis r` (review), `jarvis d` (docs), `jarvis h` (history), `jarvis i` (init), `jarvis j` (jira), `jarvis t` (today), `jarvis a` (analyze), `jarvis w` (scan)
 
 ## 🧪 Exemplos de uso
 
@@ -311,7 +311,7 @@ Rode `jarvis` sem argumentos para o menu (ou a lista de comandos, conforme a pre
 cd pasta-com-varios-repos
 jarvis add          # dentro de cada repo, registra na lista
 jarvis use          # escolhe o projeto → abre aba no Windows Terminal
-jarvis projects     # só lista o que foi detectado nas subpastas
+jarvis scan         # só lista o que foi detectado nas subpastas
 ```
 
 **Configurar o projeto interativamente**

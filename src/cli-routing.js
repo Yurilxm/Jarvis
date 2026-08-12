@@ -15,7 +15,7 @@ export const ALIASES = {
   j: 'jira',
   t: 'today',
   a: 'analyze',
-  w: 'projects',
+  w: 'scan',
 };
 
 /**

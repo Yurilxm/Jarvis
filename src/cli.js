@@ -119,7 +119,7 @@ async function main() {
   else if (command === 'analyze') await runAnalyze();
   else if (command === 'ux') await runUX();
   else if (command === 'check') await runCheck();
-  else if (command === 'projects' || command === 'workspace') {
+  else if (command === 'scan' || command === 'projects' || command === 'workspace') {
     const depthArg = [subcommand, arg].find((v) => v && /^\d+$/.test(v));
     await showLoading('Varrendo subpastas', {
       steps: ['Lendo árvore', 'Detectando repositórios Git', 'Montando lista'],
@@ -164,7 +164,7 @@ function showHelpText() {
       ['jarvis update', 'Atualiza o Jarvis (pull + npm install)'],
       ['jarvis config', 'Configura o .jarvis-dev.json do projeto'],
       ['jarvis today', 'Resumo do dia (issues, PRs, status)'],
-      ['jarvis projects [n]', 'Lista repos Git nas subpastas (até n níveis)'],
+      ['jarvis scan [n]', 'Varre subpastas e lista repos Git (até n níveis)'],
       ['jarvis use', 'Seleciona um projeto gerenciado e entra na pasta'],
       ['jarvis add [path]', 'Valida a pasta e adiciona à lista gerenciada'],
       ['jarvis shell-setup', 'Instala wrapper PowerShell (cd real no terminal)'],
