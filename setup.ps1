@@ -3,6 +3,20 @@
 #   . .\setup.ps1
 # Permanente: adicione a linha acima no seu $PROFILE.
 
+# Detecta o comando jarvis original antes de sobrescrever com a função
+$script:JarvisCommand = $null
+$cmd = Get-Command jarvis.cmd -ErrorAction SilentlyContinue |
+    Where-Object { $_.Source -notmatch '\\setup\.ps1$' } |
+    Select-Object -First 1
+if ($cmd) {
+    $script:JarvisCommand = $cmd.Source
+} else {
+    $npmCmd = Join-Path $env:APPDATA 'npm\jarvis.cmd'
+    if (Test-Path -LiteralPath $npmCmd) {
+        $script:JarvisCommand = $npmCmd
+    }
+}
+
 function global:jarvis {
     [CmdletBinding()]
     param(
@@ -15,25 +29,14 @@ function global:jarvis {
         Remove-Item -LiteralPath $nextCwd -Force -ErrorAction SilentlyContinue
     }
 
-    $exe = $null
-    $cmd = Get-Command jarvis.cmd -ErrorAction SilentlyContinue |
-        Where-Object { $_.Source -notmatch '\\setup\.ps1$' } |
-        Select-Object -First 1
-    if ($cmd) {
-        $exe = $cmd.Source
-    } else {
-        $npmCmd = Join-Path $env:APPDATA 'npm\jarvis.cmd'
-        if (Test-Path -LiteralPath $npmCmd) { $exe = $npmCmd }
-    }
-
-    if (-not $exe) {
-        Write-Host 'jarvis.cmd nao encontrado. Rode npm link na pasta do Jarvis.' -ForegroundColor Red
+    if (-not $script:JarvisCommand) {
+        Write-Host 'jarvis.cmd não encontrado. Execute npm link na pasta do Jarvis e tente novamente.' -ForegroundColor Red
         return
     }
 
     $env:JARVIS_SHELL_WRAPPER = '1'
     try {
-        & $exe @JarvisArgs
+        & $script:JarvisCommand @JarvisArgs
         $exitCode = $LASTEXITCODE
     } finally {
         Remove-Item Env:JARVIS_SHELL_WRAPPER -ErrorAction SilentlyContinue
@@ -57,9 +60,10 @@ Register-ArgumentCompleter -CommandName jarvis -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commands = @(
-        'init', 'status', 'pull', 'update', 'commit', 'merge', 'ignore', 'history',
-        'profile', 'config', 'today', 'projects', 'use', 'add', 'menu', 'help',
-        'review', 'docs', 'analyze', 'ux', 'check', 'release', 'undo', 'branch', 'pr', 'jira'
+        'init', 'status', 'pull', 'update', 'commit', 'merge', 'undo', 'release',
+        'profile', 'config', 'today', 'scan', 'use', 'add', 'menu', 'help',
+        'review', 'docs', 'analyze', 'ux', 'check', 'ignore', 'history',
+        'branch', 'pr', 'jira'
     )
     $subcommands = @{
         'branch'  = @('list', 'create', 'switch')
@@ -83,5 +87,5 @@ Register-ArgumentCompleter -CommandName jarvis -ScriptBlock {
     }
 }
 
-Write-Host 'Jarvis: funcao jarvis ativada (cd automatico ao trocar de projeto).' -ForegroundColor Green
+Write-Host 'Jarvis: função jarvis ativada (cd automático ao trocar de projeto).' -ForegroundColor Green
 Write-Host 'Use: jarvis   |   jarvis use   |   jarvis status' -ForegroundColor DarkGray

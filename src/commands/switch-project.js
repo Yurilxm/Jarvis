@@ -218,7 +218,7 @@ export async function selectProjectInteractive({ force = false } = {}) {
       }
     } else if (openMode === 'shell-cd') {
       if (process.env.JARVIS_SHELL_WRAPPER === '1') {
-        dim('Ao sair, o terminal atual tenta dar cd (shim PowerShell).');
+        dim('Ao sair, o terminal atual tenta dar cd (wrapper do shell).');
       } else {
         warn('Modo shell-cd precisa do shim: jarvis shell-setup');
         console.log(chalk.cyan(`  cd '${entered.replace(/'/g, "''")}'`));

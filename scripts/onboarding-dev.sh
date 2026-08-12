@@ -49,11 +49,23 @@ echo "------------------------------------"
 cat "$HOME/.ssh/id_ed25519.pub"
 echo "------------------------------------"
 echo ""
-echo "No Gitea, acesse: Settings → SSH / GPG Keys → Add Key"
-echo "Depois teste com: ssh -T git@192.100.0.170 -p 2222"
+echo "➡️  Acesse o Gitea:"
+echo "   http://192.100.0.170:3001"
+echo "   Settings → SSH / GPG Keys → Add Key"
+echo "   Cole a chave acima e salve."
+echo ""
+read -r -p "Depois de adicionar a chave no Gitea, pressione Enter para continuar..." _
 echo ""
 
-# 4. Verificar se o Jarvis está acessível
+# 4. Testar conexão SSH com Gitea
+echo ">>> Testando conexão SSH com o Gitea..."
+if ssh -T git@192.100.0.170 -p 2222 2>&1 | grep -q "successfully authenticated"; then
+  echo "✔ Conexão SSH com Gitea OK."
+else
+  echo "⚠️  Não foi possível autenticar. Verifique se a chave foi adicionada corretamente."
+fi
+
+# 5. Verificar se o Jarvis está acessível
 if command -v jarvis &> /dev/null; then
   echo "✔ Comando 'jarvis' encontrado."
 else
@@ -61,15 +73,18 @@ else
   echo "Peça a um admin para executar: sudo npm link --prefix /srv/jarvis-dev"
 fi
 
-# 5. Configurar credenciais pessoais do Jarvis
-...
+# 6. Configurar credenciais pessoais do Jarvis
+echo ""
+echo ">>> Credenciais pessoais do Jarvis"
+echo "Vamos configurar suas chaves de API (Gemini, GitHub, Jira)."
+echo ""
 if command -v jarvis &> /dev/null; then
   jarvis config
 else
   echo "Após instalar o Jarvis globalmente, execute: jarvis config"
 fi
 
-# 6. Setup Linux (wrapper para cd automático)
+# 7. Setup Linux (wrapper para cd automático)
 echo ""
 echo ">>> Setup Linux — integração com o shell"
 bash /srv/jarvis-dev/scripts/setup-linux.sh
@@ -80,9 +95,9 @@ echo "  Onboarding concluído!"
 echo "========================================"
 echo ""
 echo "Próximos passos:"
-echo "1. Adicione sua chave SSH ao Gitea (mostrada acima)."
-echo "2. Teste a conexão: ssh -T git@192.100.0.170 -p 2222"
-echo "3. Navegue até um projeto e use:"
+echo "1. Navegue até um projeto:"
+echo "     cd /srv/newsrag/frontend-stack"
+echo "2. Use o Jarvis:"
 echo "     jarvis status"
 echo "     jarvis c"
 echo "     jarvis use   # agora troca o diretório no shell"

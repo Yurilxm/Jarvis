@@ -2,7 +2,7 @@
 
 Assistente de desenvolvimento por linha de comando — commits inteligentes, gestão de branches, Pull Requests do GitHub, integração com Jira, revisão de código com IA e geração de documentação.
 
-**Versão:** 3.3.0
+**Versão:** 4.5.0
 
 ## 🚀 Funcionalidades
 
@@ -123,9 +123,23 @@ O script irá:
 - Configurar a identidade do Git (`user.name` e `user.email`);
 - Gerar uma chave SSH para o Gitea;
 - Exibir a chave pública para cadastro no Gitea;
-- Chamar `jarvis config` para configurar suas credenciais pessoais.
+- Testar a conexão SSH
+- Configurar credencias pessoais via `jarvis config`
+- Instalar o wrapper de shell para `cd` automático
 
-> **Nota:** No Windows, execute `npm run setup` ou `jarvis setup` para liberar o comando `jarvis` sem precisar usar `.cmd`.
+3. Após adicionar a chave no Gitea (conforme instruções exibidas pelo script), teste:
+
+   ```bash
+   jarvis status
+   jarvis c
+   jarvis use
+   ```
+
+> **Windows (máquinas locais):** execute `npm run setup` ou `jarvis setup` para liberar o comando `jarvis` sem `.cmd` e instalar o autocomplete/wrapper.
+
+> **Linux (servidor):** o onboarding já instala o wrapper e define `projectOpenMode` como `shell-cd`. Caso queira alterar para abrir em outra janela, use `jarvis config`.
+
+---
 
 ## ⚙️ Configuração
 
@@ -464,10 +478,12 @@ Autocomplete opcional (sessão atual):
 | `v2.0` | Testes automatizados com Jest |
 | `v2.5` | Análise de arquitetura e usabilidade com IA (analyze, ux) |
 | `v3.0` | Verificação de segurança (check — npm audit + secretlint + IA) |
-| `v3.x` | Workspace multi-projeto, menu configurável, setup Windows, testes Jest |
-| `v4.x` | Comandos de voz (Voice/Whisper) |
-| `v5.x` | Controle básico do computador (Jarvis Personal) |
-| `v6.x` | Servidor doméstico e automação residencial |
+| `v3.5` | Workspace multi-projeto, menu configurável, setup Windows, testes Jest |
+| `v4.0` | Configuração por perfil individual (`.env` em `~/.jarvis-dev/`) |
+| `v4.5` | Onboarding no servidor e suporte a múltiplos usuários + Wrapper de shell para cd automático no Linux |
+| `v5.x` | Comandos de voz (Voice/Whisper) |
+| `v6.x` | Controle básico do computador (Jarvis Personal) |
+| `v7.x` | Servidor doméstico e automação residencial |
 
 ## 📝 Licença
 
