@@ -105,6 +105,28 @@ jarvis setup
 
 Depois disso, o comando `jarvis` estará disponível em qualquer terminal e poderá ser utilizado em qualquer projeto Git.
 
+### Onboarding no servidor compartilhado
+
+Cada desenvolvedor deve usar seu próprio usuário no servidor.
+
+Para configurar:
+
+1. Conecte-se ao servidor com seu usuário.
+2. Execute:
+
+   ```bash
+   jarvis-onboarding
+   ```
+
+O script irá:
+
+- Configurar a identidade do Git (`user.name` e `user.email`);
+- Gerar uma chave SSH para o Gitea;
+- Exibir a chave pública para cadastro no Gitea;
+- Chamar `jarvis config` para configurar suas credenciais pessoais.
+
+> **Nota:** No Windows, execute `npm run setup` ou `jarvis setup` para liberar o comando `jarvis` sem precisar usar `.cmd`.
+
 ## ⚙️ Configuração
 
 A configuração do Jarvis é dividida em duas partes:
@@ -117,11 +139,18 @@ A configuração do Jarvis é dividida em duas partes:
 
 **1. Configuração do usuário (`.env`)**
 
-Crie o arquivo `.env` na pasta de instalação do Jarvis:
+Crie o arquivo `.env` na sua pasta pessoal:
+
+- **Linux/macOS:** `~/.jarvis-dev/.env`
+- **Windows:** `C:\Users\seu-usuario\.jarvis-dev\.env`
+
+Você pode criá-lo manualmente ou usar o comando interativo:
 
 ```bash
-cp .env.example .env
+jarvis config
 ```
+
+Depois selecione a opção "Credenciais — configurar .env pessoal".
 
 Edite com suas credenciais:
 
@@ -376,7 +405,7 @@ jarvis profile edit
 
 ## 🌍 Usando o Jarvis em qualquer projeto
 
-Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar em qualquer projeto Git e executar `jarvis status` ou `jarvis commit` — os comandos Git usam o projeto atual, mas o `.env` sempre é carregado a partir da pasta de instalação do Jarvis, não da pasta do projeto em que o comando está sendo executado.
+Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar em qualquer projeto Git e executar `jarvis status` ou `jarvis commit` — os comandos Git usam o projeto atual, mas o `.env` é carregado a partir da pasta pessoal do usuário (`~/.jarvis-dev/.env`), não da pasta do projeto em que o comando está sendo executado.
 
 ## 🔒 Segurança
 
@@ -411,11 +440,11 @@ Autocomplete opcional (sessão atual):
 |---|---|
 | `jarvis` não é reconhecido como comando | Execute `npm link` e `npm run setup` na pasta do Jarvis |
 | PowerShell bloqueia `jarvis` / pede `jarvis.cmd` | `npm run setup` ou `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
-| `GEMINI_API_KEY` não encontrada | Verifique se o `.env` existe na pasta do Jarvis e se a chave está configurada |
+| `GEMINI_API_KEY` não encontrada | Execute `jarvis config` → Credenciais e preencha a chave |
 | `GITHUB_TOKEN` não encontrada | Adicione o token ao `.env` — necessário apenas para comandos de Pull Request |
 | Erro `503` da Gemini | A API pode estar temporariamente sobrecarregada — aguarde e tente novamente |
 | Jarvis não encontra o repositório Git | Execute o comando dentro de uma pasta com repositório Git, ou use `jarvis use` |
-| Comando funciona, mas não encontra o `.env` | Verifique se o `.env` está na pasta de instalação do Jarvis |
+| Comando funciona, mas não encontra o `.env` | Confirme se `~/.jarvis-dev/.env` (ou `%USERPROFILE%\.jarvis-dev\.env`) existe e está acessível |
 | Jira retorna erro de autenticação | Verifique `JIRA_DOMAIN`, `JIRA_EMAIL` e `JIRA_API_TOKEN` |
 | Jira pede configuração do projeto | Execute `jarvis config` ou crie o arquivo `.jarvis-dev.json` na raiz do projeto |
 | GitHub retorna erro de permissão | Verifique as permissões do token e o acesso ao repositório |
