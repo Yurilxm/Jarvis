@@ -61,15 +61,27 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 
 ### Interface
 - Banner ASCII dinâmico com a versão atual
+- Menu interativo via **@clack/prompts** (autocomplete estável) ao rodar `jarvis`
+- Modo CLI configurável: só lista os comandos sem abrir o menu
 - Spinners para indicar operações em andamento
 - Caixas formatadas para melhorar a leitura
 - Sistema de ajuda organizado por categorias
+
+### Workspace e múltiplos projetos
+- Detecta repositórios Git em subpastas (`jarvis scan`)
+- Lista de projetos gerenciados (`jarvis add`, `jarvis use`)
+- Ao selecionar um projeto, abre o caminho em **nova aba do Windows Terminal** (padrão)
+- Preferências globais em `~/.jarvis/preferences.json`
+
+### Testes
+- Suíte Jest cobrindo ignore, git, Jira, Gemini, menu, preferências e mais (`npm test`)
 
 ## 🛠️ Requisitos
 
 - Node.js 18 ou superior (recomendado: 20+)
 - Git instalado e configurado
 - Windows, macOS ou Linux
+- No Windows: PowerShell (recomendado) e, para abrir projetos em aba, [Windows Terminal](https://aka.ms/terminal)
 
 ## 📦 Instalação
 
@@ -78,6 +90,17 @@ git clone https://github.com/Yurilxm/Jarvis.git
 cd Jarvis
 npm install
 npm link
+```
+
+No Windows, o `postinstall` / `npm run setup` também:
+1. Define `ExecutionPolicy` do usuário como `RemoteSigned` (libera o comando `jarvis`)
+2. Instala o shim PowerShell — **use `jarvis`, não precisa de `jarvis.cmd`**
+
+```powershell
+# Se ainda pedir jarvis.cmd, rode:
+npm run setup
+# ou
+jarvis setup
 ```
 
 Depois disso, o comando `jarvis` estará disponível em qualquer terminal e poderá ser utilizado em qualquer projeto Git.
@@ -89,6 +112,7 @@ A configuração do Jarvis é dividida em duas partes:
 | Configuração | Arquivo | Conteúdo | Versiona no Git? |
 |---|---|---|---|
 | Usuário | `.env` | Chaves de API, tokens, credenciais | ❌ Nunca |
+| Preferências | `~/.jarvis/preferences.json` | Menu, workspace, projetos, abertura de pasta | ❌ Local |
 | Projeto | `.jarvis-dev.json` | Projeto Jira, branches, convenções | ✅ Sim (se seguro) |
 
 **1. Configuração do usuário (`.env`)**
@@ -151,6 +175,17 @@ Ou, se preferir, crie o arquivo `.jarvis-dev.json` manualmente na raiz do seu pr
 
 Se o arquivo `.jarvis-dev.json` não existir, os comandos Git funcionam normalmente. Apenas os comandos do Jira solicitarão a configuração.
 
+**Preferências globais (`jarvis config`)**
+
+Além do `.jarvis-dev.json`, o `jarvis config` permite ajustar (salvos em `~/.jarvis/preferences.json`):
+
+| Preferência | Opções | Padrão |
+|---|---|---|
+| Ao abrir `jarvis` sem args | `menu` (interativo Clack) ou `commands` (só lista CLI) | `menu` |
+| Estilo do menu | `live` ou `classic` (ambos Clack autocomplete) | `live` |
+| Ao selecionar projeto | `new-tab`, `new-window`, `shell-cd`, `none` | `new-tab` |
+| Workspace / projetos | pasta-pai, lista gerenciada, seletor no lançamento | — |
+
 Como descobrir o `projectId`:
 
 ```bash
@@ -179,6 +214,8 @@ O Jarvis tentará identificar automaticamente os dados do desenvolvedor usando o
 
 ## 📋 Uso e Comandos
 
+Rode `jarvis` sem argumentos para o menu (ou a lista de comandos, conforme a preferência). Comandos diretos sempre funcionam: `jarvis status`, `jarvis commit`, etc. Force o menu com `jarvis menu` e a lista com `jarvis help`.
+
 **Projeto**
 
 | Comando | Descrição |
@@ -187,8 +224,14 @@ O Jarvis tentará identificar automaticamente os dados do desenvolvedor usando o
 | `jarvis status` | Mostra o status do repositório |
 | `jarvis pull` | Atualiza a branch atual usando `git pull` |
 | `jarvis update` | Atualiza o Jarvis usando `git pull` e `npm install` |
-| `jarvis config` | Configura o `.jarvis-dev.json` do projeto de forma interativa |
+| `jarvis config` | Configura projeto e preferências (menu, workspace, abertura de pasta) |
 | `jarvis today` | Exibe o resumo do dia (issues, PRs, status) |
+| `jarvis scan [n]` | Varre subpastas e lista repos Git (até n níveis, padrão 4) |
+| `jarvis add [path]` | Valida a pasta e adiciona à lista de projetos gerenciados |
+| `jarvis use` | Seleciona um projeto e abre o caminho no terminal |
+| `jarvis setup` | Setup Windows: libera `jarvis` sem `.cmd` + shim PowerShell |
+| `jarvis menu` | Abre o menu interativo |
+| `jarvis help` | Lista os comandos no terminal |
 
 **Commit**
 
@@ -258,9 +301,18 @@ O Jarvis tentará identificar automaticamente os dados do desenvolvedor usando o
 | `jarvis ignore` | Gerencia a lista de arquivos ignorados com IA ou manualmente |
 | `jarvis history` | Mostra o histórico de commits e pushes realizados pelo Jarvis |
 
-> ⌨️ **Atalhos:** `jarvis c` (commit), `jarvis s` (status), `jarvis m` (merge), `jarvis b` (branch), `jarvis p` (pull), `jarvis u` (update), `jarvis r` (review), `jarvis d` (docs), `jarvis h` (history), `jarvis i` (init), `jarvis j` (jira), `jarvis t` (today)
+> ⌨️ **Atalhos:** `jarvis c` (commit), `jarvis s` (status), `jarvis m` (merge), `jarvis b` (branch), `jarvis p` (pull), `jarvis u` (update), `jarvis r` (review), `jarvis d` (docs), `jarvis h` (history), `jarvis i` (init), `jarvis j` (jira), `jarvis t` (today), `jarvis a` (analyze), `jarvis w` (scan)
 
 ## 🧪 Exemplos de uso
+
+**Vários projetos numa pasta-pai**
+
+```bash
+cd pasta-com-varios-repos
+jarvis add          # dentro de cada repo, registra na lista
+jarvis use          # escolhe o projeto → abre aba no Windows Terminal
+jarvis scan         # só lista o que foi detectado nas subpastas
+```
 
 **Configurar o projeto interativamente**
 
@@ -339,27 +391,35 @@ Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar 
 
 > ⚠️ Nunca compartilhe ou publique os valores do seu arquivo `.env`.
 
-## ⌨️ Autocomplete no PowerShell (opcional)
+## ⌨️ PowerShell no Windows
+
+Após `npm install` / `npm link` / `npm run setup`, use **`jarvis`** (não é necessário `jarvis.cmd`).
+
+O setup:
+- Ajusta `ExecutionPolicy -Scope CurrentUser RemoteSigned`
+- Instala o shim em `%APPDATA%\npm\jarvis.ps1`
+
+Autocomplete opcional (sessão atual):
 
 ```powershell
 . .\setup.ps1
 ```
 
-Depois, digite `jarvis` e pressione `Tab` para completar os comandos disponíveis.
-
 ## 🐛 Solução de problemas
 
 | Problema | Solução |
 |---|---|
-| `jarvis` não é reconhecido como comando | Execute `npm link` novamente dentro da pasta do Jarvis |
+| `jarvis` não é reconhecido como comando | Execute `npm link` e `npm run setup` na pasta do Jarvis |
+| PowerShell bloqueia `jarvis` / pede `jarvis.cmd` | `npm run setup` ou `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
 | `GEMINI_API_KEY` não encontrada | Verifique se o `.env` existe na pasta do Jarvis e se a chave está configurada |
 | `GITHUB_TOKEN` não encontrada | Adicione o token ao `.env` — necessário apenas para comandos de Pull Request |
 | Erro `503` da Gemini | A API pode estar temporariamente sobrecarregada — aguarde e tente novamente |
-| Jarvis não encontra o repositório Git | Execute o comando dentro de uma pasta com repositório Git |
+| Jarvis não encontra o repositório Git | Execute o comando dentro de uma pasta com repositório Git, ou use `jarvis use` |
 | Comando funciona, mas não encontra o `.env` | Verifique se o `.env` está na pasta de instalação do Jarvis |
 | Jira retorna erro de autenticação | Verifique `JIRA_DOMAIN`, `JIRA_EMAIL` e `JIRA_API_TOKEN` |
 | Jira pede configuração do projeto | Execute `jarvis config` ou crie o arquivo `.jarvis-dev.json` na raiz do projeto |
 | GitHub retorna erro de permissão | Verifique as permissões do token e o acesso ao repositório |
+| Selecionar projeto não abre pasta | Confirme o Windows Terminal (`wt`) e a preferência `projectOpenMode` em `jarvis config` |
 | Autocomplete não funciona | Execute novamente `. .\setup.ps1` no PowerShell |
 
 ## 🗺️ Roadmap
@@ -375,6 +435,7 @@ Depois, digite `jarvis` e pressione `Tab` para completar os comandos disponívei
 | `v2.0` | Testes automatizados com Jest |
 | `v2.5` | Análise de arquitetura e usabilidade com IA (analyze, ux) |
 | `v3.0` | Verificação de segurança (check — npm audit + secretlint + IA) |
+| `v3.x` | Workspace multi-projeto, menu configurável, setup Windows, testes Jest |
 | `v4.x` | Comandos de voz (Voice/Whisper) |
 | `v5.x` | Controle básico do computador (Jarvis Personal) |
 | `v6.x` | Servidor doméstico e automação residencial |

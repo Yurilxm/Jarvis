@@ -1,6 +1,6 @@
 import { isGitRepo, initRepo } from '../git/status.js';
 import { getCurrentBranch, switchBranch, createBranch, createEmptyCommit } from '../git/branch.js';
-import { PROTECTED_BRANCH, DEVELOPMENT_BRANCH } from '../config/branches.js';
+import { getProtectedBranch, getDevelopmentBranch } from '../config/branches.js';
 import { confirm } from '@inquirer/prompts';
 import {
   printBanner,
@@ -16,6 +16,8 @@ import {
 } from '../ui.js';
 
 export async function runInitFlow() {
+  const protectedBranch = getProtectedBranch();
+  const developmentBranch = getDevelopmentBranch();
   printBanner();
 
   if (isGitRepo()) {
@@ -25,11 +27,11 @@ export async function runInitFlow() {
   }
 
   await showLoading('Inicializando repositório', {
-    steps: ['Criando .git', `Branch ${PROTECTED_BRANCH}`, 'Finalizando'],
+    steps: ['Criando .git', `Branch ${protectedBranch}`, 'Finalizando'],
     durationMs: 700,
   });
 
-  const result = initRepo(PROTECTED_BRANCH);
+  const result = initRepo(protectedBranch);
   if (!result.success) {
     error(`Falha ao inicializar: ${result.message}`);
     process.exit(1);
@@ -38,7 +40,7 @@ export async function runInitFlow() {
   success(result.message);
 
   const setupDev = await confirm({
-    message: `Criar branch '${DEVELOPMENT_BRANCH}' e commit inicial vazio?`,
+    message: `Criar branch '${developmentBranch}' e commit inicial vazio?`,
     default: true,
   });
 
@@ -49,19 +51,19 @@ export async function runInitFlow() {
       dim('Você pode criar a branch depois com: jarvis branch create dev');
     } else {
       success(commitResult.message);
-      const branchResult = createBranch(DEVELOPMENT_BRANCH);
+      const branchResult = createBranch(developmentBranch);
       if (!branchResult.success) {
         warn(branchResult.message);
       } else {
         success(branchResult.message);
         const goDev = await confirm({
-          message: `Trocar para '${DEVELOPMENT_BRANCH}' agora?`,
+          message: `Trocar para '${developmentBranch}' agora?`,
           default: true,
         });
         if (goDev) {
-          const sw = switchBranch(DEVELOPMENT_BRANCH);
+          const sw = switchBranch(developmentBranch);
           if (sw.success) {
-            success(`Agora você está na branch '${DEVELOPMENT_BRANCH}'.`);
+            success(`Agora você está na branch '${developmentBranch}'.`);
           } else {
             warn(sw.message);
           }
