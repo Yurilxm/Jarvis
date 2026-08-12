@@ -100,8 +100,10 @@ function maskKey(key) {
 }
 
 async function setupUserEnv() {
+  // Carrega uma vez e mantém o estado durante toda a edição
+  const current = readUserEnv();
+  
   while (true) {
-    const current = readUserEnv();
     const envExists = fs.existsSync(getUserEnvPath());
     
     blank();
@@ -144,7 +146,7 @@ async function setupUserEnv() {
       saveUserEnv(current);
       success('Credenciais salvas com sucesso!');
       dim(`Arquivo: ${getUserEnvPath()}`);
-      dim('Reinicie o terminal para que as novas chaves entrem em vigor.');
+      dim('As novas chaves entrarão em vigor na próxima execução do Jarvis.');
       return;
     }
     
@@ -167,7 +169,7 @@ async function setupUserEnv() {
     });
     
     current[action] = newValue.trim();
-    // Continua o loop para mostrar o menu novamente
+    // Continua o loop — o current mantém o estado
   }
 }
 
