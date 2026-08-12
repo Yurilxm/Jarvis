@@ -47,6 +47,19 @@ if (Test-Path -LiteralPath $shimDst) {
 Copy-Item -LiteralPath $shimSrc -Destination $shimDst -Force
 Write-Host "Shim instalado: $shimDst" -ForegroundColor Green
 
+# Registra o wrapper do setup.ps1 no perfil do PowerShell
+$profilePath = $PROFILE.CurrentUserAllHosts
+$setupLine = ". '$repoRoot\setup.ps1'"
+
+if (-not (Test-Path -LiteralPath $profilePath)) {
+    New-Item -ItemType File -Path $profilePath -Force | Out-Null
+}
+
+if (-not (Select-String -LiteralPath $profilePath -Pattern 'setup\.ps1' -Quiet)) {
+    Add-Content -LiteralPath $profilePath -Value $setupLine
+    Write-Host "Perfil do PowerShell atualizado: $profilePath" -ForegroundColor Green
+}
+
 Write-Host ''
 Write-Host 'Pronto. Feche e abra o terminal, depois use:' -ForegroundColor Green
 Write-Host '  jarvis' -ForegroundColor White

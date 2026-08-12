@@ -115,7 +115,7 @@ async function main() {
   else if (command === 'undo') await runUndo();
   else if (command === 'today') await runToday();
   else if (command === 'release') await runRelease();
-  else if (command === 'config') await runConfig();
+  else if (command === 'config') await runConfig(subcommand === 'credentials' ? 'credentials' : undefined);
   else if (command === 'analyze') await runAnalyze();
   else if (command === 'ux') await runUX();
   else if (command === 'check') await runCheck();

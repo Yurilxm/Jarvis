@@ -34,6 +34,7 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Lista, visualiza e revisa Pull Requests com IA
 - Permite aprovar, comentar, solicitar alterações, fazer checkout, merge ou fechar PRs
 - Permite testar localmente a branch de uma PR antes de aprová-la
+- Verificação prévia da presença de `GITHUB_TOKEN` com orientação direta caso ausente
 - Todas as ações importantes exigem confirmação explícita
 
 ### Integração com Jira
@@ -88,16 +89,18 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 ```bash
 git clone https://github.com/Yurilxm/Jarvis.git
 cd Jarvis
-npm install
-npm link
+npm run bootstrap
 ```
 
-No Windows, o `postinstall` / `npm run setup` também:
-1. Define `ExecutionPolicy` do usuário como `RemoteSigned` (libera o comando `jarvis`)
-2. Instala o shim PowerShell — **use `jarvis`, não precisa de `jarvis.cmd`**
+O comando `npm run bootstrap` automatiza a inicialização do ambiente:
+1. Instala dependências e realiza o `npm link`
+2. No Windows: ajusta a `ExecutionPolicy`, instala o shim e registra o script no perfil do PowerShell
+3. No Linux: executa o script de onboarding do ambiente
+4. Se nenhuma credencial for detectada, abre automaticamente a tela de configuração de credenciais pessoais (`.env`)
 
-```powershell
-# Se ainda pedir jarvis.cmd, rode:
+Você também pode rodar o setup manual a qualquer momento:
+
+```bash
 npm run setup
 # ou
 jarvis setup
@@ -124,7 +127,7 @@ O script irá:
 - Gerar uma chave SSH para o Gitea;
 - Exibir a chave pública para cadastro no Gitea;
 - Testar a conexão SSH
-- Configurar credencias pessoais via `jarvis config`
+- Configurar credenciais pessoais via `jarvis config credentials`
 - Instalar o wrapper de shell para `cd` automático
 
 3. Após adicionar a chave no Gitea (conforme instruções exibidas pelo script), teste:
@@ -135,7 +138,7 @@ O script irá:
    jarvis use
    ```
 
-> **Windows (máquinas locais):** execute `npm run setup` ou `jarvis setup` para liberar o comando `jarvis` sem `.cmd` e instalar o autocomplete/wrapper.
+> **Windows (máquinas locais):** execute `npm run bootstrap` ou `jarvis setup` para liberar o comando `jarvis` sem `.cmd`, registrar no perfil do PowerShell e instalar o autocomplete/wrapper.
 
 > **Linux (servidor):** o onboarding já instala o wrapper e define `projectOpenMode` como `shell-cd`. Caso queira alterar para abrir em outra janela, use `jarvis config`.
 
@@ -158,13 +161,13 @@ Crie o arquivo `.env` na sua pasta pessoal:
 - **Linux/macOS:** `~/.jarvis-dev/.env`
 - **Windows:** `C:\Users\seu-usuario\.jarvis-dev\.env`
 
-Você pode criá-lo manualmente ou usar o comando interativo:
+Você pode criá-lo manualmente ou ir direto para o assistente de credenciais usando:
 
 ```bash
-jarvis config
+jarvis config credentials
 ```
 
-Depois selecione a opção "Credenciais — configurar .env pessoal".
+Ou através do menu interativo de `jarvis config` selecionando "Credenciais — configurar .env pessoal".
 
 Edite com suas credenciais:
 
@@ -268,11 +271,12 @@ Rode `jarvis` sem argumentos para o menu (ou a lista de comandos, conforme a pre
 | `jarvis pull` | Atualiza a branch atual usando `git pull` |
 | `jarvis update` | Atualiza o Jarvis usando `git pull` e `npm install` |
 | `jarvis config` | Configura projeto e preferências (menu, workspace, abertura de pasta) |
+| `jarvis config credentials` | Abre diretamente a configuração das credenciais pessoais (`.env`) |
 | `jarvis today` | Exibe o resumo do dia (issues, PRs, status) |
 | `jarvis scan [n]` | Varre subpastas e lista repos Git (até n níveis, padrão 4) |
 | `jarvis add [path]` | Valida a pasta e adiciona à lista de projetos gerenciados |
 | `jarvis use` | Seleciona um projeto e abre o caminho no terminal |
-| `jarvis setup` | Setup Windows: libera `jarvis` sem `.cmd` + shim PowerShell |
+| `jarvis setup` | Setup Windows: libera `jarvis` sem `.cmd`, instala shim e perfil PS |
 | `jarvis menu` | Abre o menu interativo |
 | `jarvis help` | Lista os comandos no terminal |
 
@@ -364,6 +368,12 @@ cd meu-projeto
 jarvis config
 ```
 
+**Configurar credenciais pessoais rapidamente**
+
+```bash
+jarvis config credentials
+```
+
 **Commit com IA**
 
 ```bash
@@ -419,7 +429,7 @@ jarvis profile edit
 
 ## 🌍 Usando o Jarvis em qualquer projeto
 
-Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar em qualquer projeto Git e executar `jarvis status` ou `jarvis commit` — os comandos Git usam o projeto atual, mas o `.env` é carregado a partir da pasta pessoal do usuário (`~/.jarvis-dev/.env`), não da pasta do projeto em que o comando está sendo executado.
+Depois de rodar `npm link` ou `npm run bootstrap`, o Jarvis fica disponível globalmente. Basta entrar em qualquer projeto Git e executar `jarvis status` ou `jarvis commit` — os comandos Git usam o projeto atual, mas o `.env` é carregado a partir da pasta pessoal do usuário (`~/.jarvis-dev/.env`), não da pasta do projeto em que o comando está sendo executado.
 
 ## 🔒 Segurança
 
@@ -436,13 +446,14 @@ Depois de rodar `npm link`, o Jarvis fica disponível globalmente. Basta entrar 
 
 ## ⌨️ PowerShell no Windows
 
-Após `npm install` / `npm link` / `npm run setup`, use **`jarvis`** (não é necessário `jarvis.cmd`).
+Após `npm install` / `npm run bootstrap` / `npm run setup`, use **`jarvis`** (não é necessário `jarvis.cmd`).
 
 O setup:
 - Ajusta `ExecutionPolicy -Scope CurrentUser RemoteSigned`
 - Instala o shim em `%APPDATA%\npm\jarvis.ps1`
+- Adiciona o carregamento automático do `setup.ps1` no seu perfil do PowerShell (`$PROFILE`)
 
-Autocomplete opcional (sessão atual):
+Caso o autocomplete precise ser recarregado na sessão atual sem reiniciar o terminal:
 
 ```powershell
 . .\setup.ps1
@@ -454,16 +465,16 @@ Autocomplete opcional (sessão atual):
 |---|---|
 | `jarvis` não é reconhecido como comando | Execute `npm link` e `npm run setup` na pasta do Jarvis |
 | PowerShell bloqueia `jarvis` / pede `jarvis.cmd` | `npm run setup` ou `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
-| `GEMINI_API_KEY` não encontrada | Execute `jarvis config` → Credenciais e preencha a chave |
-| `GITHUB_TOKEN` não encontrada | Adicione o token ao `.env` — necessário apenas para comandos de Pull Request |
+| `GEMINI_API_KEY` não encontrada | Execute `jarvis config credentials` e preencha a chave |
+| `GITHUB_TOKEN não configurado` ao rodar comandos de PR | Execute `jarvis config credentials` e configure seu `GITHUB_TOKEN` |
 | Erro `503` da Gemini | A API pode estar temporariamente sobrecarregada — aguarde e tente novamente |
 | Jarvis não encontra o repositório Git | Execute o comando dentro de uma pasta com repositório Git, ou use `jarvis use` |
 | Comando funciona, mas não encontra o `.env` | Confirme se `~/.jarvis-dev/.env` (ou `%USERPROFILE%\.jarvis-dev\.env`) existe e está acessível |
-| Jira retorna erro de autenticação | Verifique `JIRA_DOMAIN`, `JIRA_EMAIL` e `JIRA_API_TOKEN` |
+| Jira retorna erro de autenticação | Verifique `JIRA_DOMAIN`, `JIRA_EMAIL` e `JIRA_API_TOKEN` com `jarvis config credentials` |
 | Jira pede configuração do projeto | Execute `jarvis config` ou crie o arquivo `.jarvis-dev.json` na raiz do projeto |
 | GitHub retorna erro de permissão | Verifique as permissões do token e o acesso ao repositório |
 | Selecionar projeto não abre pasta | Confirme o Windows Terminal (`wt`) e a preferência `projectOpenMode` em `jarvis config` |
-| Autocomplete não funciona | Execute novamente `. .\setup.ps1` no PowerShell |
+| Autocomplete não funciona | Execute novamente `. .\setup.ps1` no PowerShell ou reinicie o terminal |
 
 ## 🗺️ Roadmap
 
@@ -480,7 +491,7 @@ Autocomplete opcional (sessão atual):
 | `v3.0` | Verificação de segurança (check — npm audit + secretlint + IA) |
 | `v3.5` | Workspace multi-projeto, menu configurável, setup Windows, testes Jest |
 | `v4.0` | Configuração por perfil individual (`.env` em `~/.jarvis-dev/`) |
-| `v4.5` | Onboarding no servidor e suporte a múltiplos usuários + Wrapper de shell para cd automático no Linux |
+| `v4.5` | Onboarding no servidor, suporte a múltiplos usuários, wrapper de shell no Linux, script de bootstrap e validação de token do GitHub |
 | `v5.x` | Comandos de voz (Voice/Whisper) |
 | `v6.x` | Controle básico do computador (Jarvis Personal) |
 | `v7.x` | Servidor doméstico e automação residencial |

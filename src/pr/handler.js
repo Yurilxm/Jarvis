@@ -1,12 +1,31 @@
 import { isGitRepo } from '../git/status.js';
 import { prList, prView, prDiff, prReview, prCheckout, prApprove, prRequestChanges, prComment, prMerge, prClose } from './flow.js';
+import { getGitHubToken } from '../config/github.js';
 import { error, dim } from '../ui.js';
+
+/**
+ * Valida se o GitHub token está disponível.
+ * Se não estiver, orienta o usuário e encerra.
+ */
+function requireGithubToken() {
+  const token = getGitHubToken();
+  if (!token) {
+    error('GITHUB_TOKEN não configurado.');
+    dim('Execute: jarvis config credentials');
+    dim('Depois tente novamente o comando de PR.');
+    process.exit(1);
+  }
+  return token;
+}
 
 export async function handlePrCommand(sub, arg) {
   if (!isGitRepo()) {
     error('Este diretório não é um repositório Git.');
     process.exit(1);
   }
+
+  // Exige token antes de qualquer comando de PR
+  requireGithubToken();
 
   if (!sub || sub === 'list') {
     await prList();

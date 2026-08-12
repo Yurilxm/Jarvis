@@ -11,7 +11,8 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "postinstall": "node scripts/postinstall.js",
-    "setup": "node scripts/postinstall.js"
+    "setup": "node scripts/postinstall.js",
+    "bootstrap": "node scripts/bootstrap-dev.js"
   },
   "keywords": [],
   "author": "",

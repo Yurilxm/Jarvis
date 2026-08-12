@@ -175,7 +175,14 @@ async function setupUserEnv() {
 
 // ─── Comando principal ────────────────────────────────────
 
-export async function runConfig() {
+export async function runConfig(section) {
+  // Se for chamado com 'credentials', abre direto as credenciais pessoais
+  if (section === 'credentials') {
+    printBanner();
+    await setupUserEnv();
+    return;
+  }
+
   printBanner();
   info('Configuração do projeto e preferências\n');
 
