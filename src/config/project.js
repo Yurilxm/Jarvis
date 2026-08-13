@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { info, dim } from '../ui.js';
+import { loadPreferences } from './preferences.js';
 
 /**
  * Carrega a configuração do projeto (.jarvis-dev.json) da raiz do diretório atual.
- * @returns {object}
+ * @returns {object|null}
  */
 export function loadProjectConfig() {
   const cwd = process.cwd();
@@ -25,23 +26,29 @@ export function loadProjectConfig() {
 }
 
 /**
- * Retorna um valor da config do projeto, com fallback.
+ * Retorna um valor de configuração do projeto, com fallback global.
+ * Prioridade: projeto (.jarvis-dev.json) → global (~/.jarvis/preferences.json) → padrão.
+ *
  * @param {string} path - ex: 'jira.projectKey'
  * @param {*} defaultValue
  * @returns {*}
  */
 export function getProjectConfig(path, defaultValue = null) {
-  const config = loadProjectConfig();
-  if (!config) return defaultValue;
+  const project = loadProjectConfig();
+  const prefs = loadPreferences();
 
-  const keys = path.split('.');
-  let value = config;
-  for (const key of keys) {
-    if (value && typeof value === 'object' && key in value) {
-      value = value[key];
-    } else {
+  switch (path) {
+    case 'jira.projectKey':
+      return project?.jira?.projectKey || prefs.jiraProjectKey || defaultValue;
+    case 'jira.projectId':
+      return project?.jira?.projectId || prefs.jiraProjectId || defaultValue;
+    case 'jira.issueType':
+      return project?.jira?.issueType || prefs.jiraIssueType || defaultValue;
+    case 'git.protectedBranch':
+      return project?.git?.protectedBranch || 'main';
+    case 'git.developmentBranch':
+      return project?.git?.developmentBranch || 'dev';
+    default:
       return defaultValue;
-    }
   }
-  return value ?? defaultValue;
 }

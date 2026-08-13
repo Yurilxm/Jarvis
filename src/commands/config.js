@@ -13,6 +13,8 @@ import {
   getManagedProjects,
   getWorkspaceRoot,
   isProjectPickerOnLaunch,
+  getGlobalJiraConfig,
+  setGlobalJiraConfig,
 } from '../config/preferences.js';
 import { manageProjectsInteractive } from './switch-project.js';
 import {
@@ -173,6 +175,27 @@ async function setupUserEnv() {
   }
 }
 
+async function setupGlobalJira() {
+  const current = getGlobalJiraConfig();
+
+  const projectKey = await input({
+    message: 'Jira global — projectKey:',
+    default: current.projectKey,
+  });
+  const projectId = await input({
+    message: 'Jira global — projectId:',
+    default: current.projectId,
+  });
+  const issueType = await input({
+    message: 'Jira global — issueType:',
+    default: current.issueType,
+  });
+
+  setGlobalJiraConfig({ projectKey, projectId, issueType });
+  success('Configuração global de Jira salva!');
+  dim('Agora jarvis jira list funciona de qualquer diretório.');
+}
+
 // ─── Comando principal ────────────────────────────────────
 
 export async function runConfig(section) {
@@ -248,6 +271,7 @@ export async function runConfig(section) {
         { name: 'Jira — projectKey', value: 'jira.projectKey' },
         { name: 'Jira — projectId', value: 'jira.projectId' },
         { name: 'Jira — issueType', value: 'jira.issueType' },
+        { name: 'Jira global — configurar fallback para uso fora de projetos', value: 'globalJira' },
         { name: 'Git — branch protegida', value: 'git.protectedBranch' },
         { name: 'Git — branch de desenvolvimento', value: 'git.developmentBranch' },
         { name: 'UI — ao abrir jarvis (menu ou lista de comandos)', value: 'ui.launchMode' },
@@ -276,6 +300,11 @@ export async function runConfig(section) {
 
     if (action === 'userEnv') {
       await setupUserEnv();
+      continue;
+    }
+
+    if (action === 'globalJira') {
+      await setupGlobalJira();
       continue;
     }
 

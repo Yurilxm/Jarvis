@@ -27,6 +27,11 @@ const DEFAULTS = {
   projectPickerOnLaunch: true,
   /** Último projeto escolhido. */
   lastProjectPath: /** @type {string|null} */ (null),
+
+  // Configuração global do Jira — usada como fallback quando não há .jarvis-dev.json
+  jiraProjectKey: '',
+  jiraProjectId: '',
+  jiraIssueType: 'Tarefa',
 };
 
 function getJarvisDir() {
@@ -239,4 +244,31 @@ export function clearShellCwdRequest() {
   } catch {
     // ignore
   }
+}
+
+// ─── Configuração global do Jira ─────────────────────────
+
+/**
+ * Retorna a configuração global do Jira salva no perfil do usuário.
+ * @returns {{ projectKey: string, projectId: string, issueType: string }}
+ */
+export function getGlobalJiraConfig() {
+  const prefs = loadPreferences();
+  return {
+    projectKey: prefs.jiraProjectKey || '',
+    projectId: prefs.jiraProjectId || '',
+    issueType: prefs.jiraIssueType || 'Tarefa',
+  };
+}
+
+/**
+ * Salva a configuração global do Jira no perfil do usuário.
+ * @param {{ projectKey?: string, projectId?: string, issueType?: string }} config
+ */
+export function setGlobalJiraConfig({ projectKey, projectId, issueType }) {
+  return savePreferences({
+    jiraProjectKey: String(projectKey || '').trim(),
+    jiraProjectId: String(projectId || '').trim(),
+    jiraIssueType: String(issueType || 'Tarefa').trim(),
+  });
 }

@@ -31,12 +31,14 @@ function requireConfig() {
 function requireProjectConfig() {
   const projectKey = getProjectConfig('jira.projectKey');
   const projectId = getProjectConfig('jira.projectId');
+
   if (!projectKey || !projectId) {
-    error('Integração com Jira não configurada neste projeto.');
-    dim('Crie um arquivo .jarvis-dev.json na raiz do projeto com:');
-    dim('  "jira": { "projectKey": "SDG", "projectId": "10033" }');
+    error('Integração com Jira não configurada.');
+    dim('Execute jarvis config para configurar o Jira (projeto ou global).');
+    dim('Você também pode rodar: jarvis config credentials');
     process.exit(1);
   }
+
   return { projectKey, projectId };
 }
 
