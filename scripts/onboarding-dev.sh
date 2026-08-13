@@ -19,6 +19,13 @@ for cmd in node npm git; do
 done
 echo "✔ Node, npm e Git encontrados."
 
+# 1.1 Garantir permissão de execução do comando cli.js
+JARVIS_CLI="/srv/jarvis-dev/src/cli.js"
+if [ -f "$JARVIS_CLI" ]; then
+  chmod +x "$JARVIS_CLI"
+  echo "✔ Permissão de execução verificada para o Jarvis."
+fi
+
 # 2. Configurar identidade Git
 echo ""
 echo ">>> Configurando identidade do Git"

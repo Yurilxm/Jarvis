@@ -4,6 +4,12 @@
 
 set -e
 
+# Garante permissão de execução do comando cli.js
+JARVIS_CLI="/srv/jarvis-dev/src/cli.js"
+if [ -f "$JARVIS_CLI" ]; then
+  chmod +x "$JARVIS_CLI"
+fi
+
 echo ""
 echo ">>> Configurando integração do Jarvis com o shell"
 
