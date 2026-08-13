@@ -2,15 +2,17 @@
 
 Assistente de desenvolvimento por linha de comando — commits inteligentes, gestão de branches, Pull Requests do GitHub, integração com Jira, revisão de código com IA e geração de documentação.
 
-**Versão:** 4.5.0
+**Versão:** 2.0.0
 
 ## 🚀 Funcionalidades
 
 ### Commits com IA
 - Analisa alterações com **Gemini API** e gera mensagens no formato **Conventional Commits**
+- Permite escolher entre commitar todos os arquivos alterados (`git add .`) ou selecionar manualmente quais arquivos incluir
 - Sanitiza dados sensíveis antes de enviar informações à IA (`.env`, tokens e chaves)
 - Fluxo interativo para aprovar, editar, gerar novamente ou cancelar
 - Adiciona assinatura automática no corpo do commit
+- Sugestão de nova versão do Jarvis só aparece quando o comando é executado dentro do próprio repositório do Jarvis — nunca em outros projetos
 
 ### Revisão de código com IA
 - Analisa alterações locais (todas ou apenas *staged*) usando IA em modo somente leitura
@@ -41,10 +43,10 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Lista issues do projeto (ativas, todas ou concluídas)
 - Exibe detalhes de uma issue com descrição formatada
 - Move issues entre status (`To Do`, `In Progress`, `Done`)
-- Cria novas tasks com suporte a IA para título e descrição
+- Cria novas tasks com suporte a IA para título e descrição, com fluxo de revisão completo (aprovar, editar título e descrição manualmente, gerar novamente ou cancelar antes de criar)
 - Atribuição dinâmica de responsáveis (busca da API do Jira)
 - Cria branches automaticamente ao iniciar uma issue
-- Configuração interativa por projeto via `jarvis config` ou arquivo `.jarvis-dev.json`
+- Configuração interativa por projeto via `jarvis config`, arquivo `.jarvis-dev.json`, ou fallback global (`~/.jarvis-dev/jira.json`) para uso fora de repositórios Git
 
 ### Segurança
 - Nenhuma ação destrutiva é executada sem confirmação
@@ -52,6 +54,7 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Nenhum merge ou push é realizado automaticamente sem autorização
 - Dados sensíveis são sanitizados antes de serem enviados à IA
 - Arquivos sensíveis ignorados automaticamente, com regras adicionais via `.jarvisignore`
+- O diretório `.jarvis/` (histórico de comandos e cache local) é ignorado automaticamente pelo Git em todos os repositórios onde o Jarvis é usado — nunca fica pendente nem bloqueia merges
 - Nenhum ID de usuário, projeto ou configuração específica fica hardcoded no código
 
 ### Análise de projeto com IA
@@ -75,7 +78,7 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Preferências globais em `~/.jarvis/preferences.json`
 
 ### Testes
-- Suíte Jest cobrindo ignore, git, Jira, Gemini, menu, preferências e mais (`npm test`)
+- 30 suítes / 121 testes com Jest, cobrindo: fluxo de commit (mensagem, assinatura, seleção manual de arquivos), Git (status, diff, branch), Gemini, Jira (client, config, criação de task, fallback global), GitHub PR, gestão de projetos e workspace (scan, add, switch, reader), menu interativo, roteamento de CLI, preferências, sanitização de dados sensíveis, geração de prompts (review/docs), versionamento semântico, controle de uso/cota, abertura de terminal e ignore de arquivos (`npm test`)
 
 ## 🛠️ Requisitos
 
@@ -117,9 +120,9 @@ Para configurar:
 1. Conecte-se ao servidor com seu usuário.
 2. Execute:
 
-   ```bash
+```bash
    jarvis-onboarding
-   ```
+```
 
 O script irá:
 
@@ -132,11 +135,11 @@ O script irá:
 
 3. Após adicionar a chave no Gitea (conforme instruções exibidas pelo script), teste:
 
-   ```bash
+```bash
    jarvis status
    jarvis c
    jarvis use
-   ```
+```
 
 > **Windows (máquinas locais):** execute `npm run bootstrap` ou `jarvis setup` para liberar o comando `jarvis` sem `.cmd`, registrar no perfil do PowerShell e instalar o autocomplete/wrapper.
 
@@ -195,6 +198,8 @@ Você pode configurar o arquivo `.jarvis-dev.json` do seu projeto de forma inter
 jarvis config
 ```
 
+> Se executado fora de um repositório Git, o `jarvis config` ajusta as opções contextualmente e permite configurar um fallback global do Jira — salvo em `~/.jarvis/preferences.json`, junto das demais preferências — usado automaticamente quando não há `.jarvis-dev.json` local.
+
 Ou, se preferir, crie o arquivo `.jarvis-dev.json` manualmente na raiz do seu projeto:
 
 ```json
@@ -219,7 +224,7 @@ Ou, se preferir, crie o arquivo `.jarvis-dev.json` manualmente na raiz do seu pr
 | `git.protectedBranch` | Branch protegida | `"main"` |
 | `git.developmentBranch` | Branch de desenvolvimento | `"dev"` |
 
-Se o arquivo `.jarvis-dev.json` não existir, os comandos Git funcionam normalmente. Apenas os comandos do Jira solicitarão a configuração.
+Se o arquivo `.jarvis-dev.json não existir,` os comandos Git funcionam normalmente. Para o Jira, o Jarvis busca a configuração nesta ordem: `.jarvis-dev.json` do projeto → fallback global em `~/.jarvis/preferences.json` (`jiraProjectKey`, `jiraProjectId`, `jiraIssueType`) → solicitação interativa, se nada estiver configurado.
 
 **Preferências globais (`jarvis config`)**
 
@@ -284,7 +289,7 @@ Rode `jarvis` sem argumentos para o menu (ou a lista de comandos, conforme a pre
 
 | Comando | Descrição |
 |---|---|
-| `jarvis commit` | Analisa as alterações e gera uma mensagem de commit com IA |
+| `jarvis commit` | Analisa as alterações, permite escolher todos os arquivos ou selecionar manualmente, e gera uma mensagem de commit com IA |
 | `jarvis merge [origem] [destino]` | Faz merge entre branches (padrão: `dev → main`) |
 | `jarvis release` | Executa o fluxo de release (tag, push e merge dev → main) |
 | `jarvis undo` | Desfaz o último commit (soft reset) |
@@ -331,7 +336,7 @@ Rode `jarvis` sem argumentos para o menu (ou a lista de comandos, conforme a pre
 | `jarvis jira list [active\|all\|done]` | Lista issues do Jira por status |
 | `jarvis jira view <issue>` | Mostra os detalhes de uma issue |
 | `jarvis jira move <issue>` | Move uma issue para outro status |
-| `jarvis jira create` | Cria uma nova task (com IA opcional) |
+| `jarvis jira create` | Cria uma nova task, com IA e fluxo de revisão (editar título/descrição antes de criar) |
 
 **Perfil**
 
@@ -381,7 +386,7 @@ cd meu-projeto
 jarvis commit
 ```
 
-O Jarvis vai: verificar a branch atual → analisar o status do repositório → coletar as alterações → sanitizar informações sensíveis → enviar o conteúdo seguro para a Gemini API → gerar uma mensagem no padrão Conventional Commits → exibir para aprovação → permitir aprovar, editar, gerar novamente ou cancelar → commitar após confirmação → perguntar se deve fazer push.
+O Jarvis vai: verificar a branch atual → analisar o status do repositório → perguntar se você quer commitar todos os arquivos ou selecionar manualmente → sanitizar informações sensíveis → enviar o conteúdo seguro para a Gemini API → gerar uma mensagem no padrão Conventional Commits → exibir para aprovação → permitir aprovar, editar, gerar novamente ou cancelar → commitar após confirmação → perguntar se deve fazer push.
 
 **Revisão de código**
 
@@ -437,6 +442,7 @@ Depois de rodar `npm link` ou `npm run bootstrap`, o Jarvis fica disponível glo
 - Tokens e chaves não aparecem nos logs nem na saída do terminal
 - O conteúdo dos diffs é sanitizado antes de ser enviado à IA
 - Arquivos sensíveis são ignorados automaticamente, com regras adicionais via `.jarvisignore`
+- O diretório `.jarvis/` (histórico local) é ignorado automaticamente em todos os projetos onde o Jarvis é usado
 - A branch `main` possui uma camada extra de proteção
 - Nenhuma ação destrutiva é executada sem confirmação explícita
 - O Jarvis não realiza stash automático nem resolve conflitos automaticamente
@@ -471,7 +477,7 @@ Caso o autocomplete precise ser recarregado na sessão atual sem reiniciar o ter
 | Jarvis não encontra o repositório Git | Execute o comando dentro de uma pasta com repositório Git, ou use `jarvis use` |
 | Comando funciona, mas não encontra o `.env` | Confirme se `~/.jarvis-dev/.env` (ou `%USERPROFILE%\.jarvis-dev\.env`) existe e está acessível |
 | Jira retorna erro de autenticação | Verifique `JIRA_DOMAIN`, `JIRA_EMAIL` e `JIRA_API_TOKEN` com `jarvis config credentials` |
-| Jira pede configuração do projeto | Execute `jarvis config` ou crie o arquivo `.jarvis-dev.json` na raiz do projeto |
+| Jira pede configuração do projeto | Execute `jarvis config` ou crie o arquivo `.jarvis-dev.json` na raiz do projeto (ou configure o fallback global) |
 | GitHub retorna erro de permissão | Verifique as permissões do token e o acesso ao repositório |
 | Selecionar projeto não abre pasta | Confirme o Windows Terminal (`wt`) e a preferência `projectOpenMode` em `jarvis config` |
 | Autocomplete não funciona | Execute novamente `. .\setup.ps1` no PowerShell ou reinicie o terminal |
@@ -484,17 +490,13 @@ Caso o autocomplete precise ser recarregado na sessão atual sem reiniciar o ter
 | `v1.1` | Assinatura automática nos commits e perfil do desenvolvedor |
 | `v1.2` | Integração com Jira e configuração por projeto (`.jarvis-dev.json`) |
 | `v1.3` | Revisão de código com IA e geração de documentação |
-| `v1.4` | Aliases, undo, today e aviso de cota Gemini |
-| `v1.5` | Release automatizado, config interativo e modularização do CLI |
-| `v2.0` | Testes automatizados com Jest |
-| `v2.5` | Análise de arquitetura e usabilidade com IA (analyze, ux) |
-| `v3.0` | Verificação de segurança (check — npm audit + secretlint + IA) |
-| `v3.5` | Workspace multi-projeto, menu configurável, setup Windows, testes Jest |
-| `v4.0` | Configuração por perfil individual (`.env` em `~/.jarvis-dev/`) |
-| `v4.5` | Onboarding no servidor, suporte a múltiplos usuários, wrapper de shell no Linux, script de bootstrap e validação de token do GitHub |
-| `v5.x` | Comandos de voz (Voice/Whisper) |
-| `v6.x` | Controle básico do computador (Jarvis Personal) |
-| `v7.x` | Servidor doméstico e automação residencial |
+| `v1.4` | Aliases, undo, today, aviso de cota Gemini, release automatizado, config interativo e modularização do CLI |
+| `v1.5` | Testes automatizados com Jest |
+| `v1.6` | Análise de arquitetura e usabilidade com IA (analyze, ux) |
+| `v1.7` | Verificação de segurança (check — npm audit + secretlint + IA) |
+| `v1.8` | Workspace multi-projeto, menu configurável, setup Windows, testes Jest |
+| `v1.9` | Configuração por perfil individual (`.env` em `~/.jarvis-dev/`) |
+| **`v2.0`** | **Primeira versão em uso real pela equipe.** Onboarding no servidor, suporte a múltiplos usuários, wrapper de shell no Linux, script de bootstrap, validação de token do GitHub, seleção manual de arquivos no commit, fluxo de edição de título/descrição no `jarvis jira create`, fallback global de configuração do Jira via preferências (`~/.jarvis/preferences.json`), correção do `.jarvis/` sendo rastreado por engano e correção da sugestão de versão aparecendo fora do próprio repositório do Jarvis |
 
 ## 📝 Licença
 

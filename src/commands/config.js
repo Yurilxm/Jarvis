@@ -22,11 +22,13 @@ import {
   printBox,
   info,
   success,
+  warn,
   dim,
   blank,
   chalk,
   muted,
 } from '../ui.js';
+import { isGitRepo } from '../git/status.js';
 
 const OPEN_MODE_LABELS = {
   'new-tab': 'nova aba no Windows Terminal (recomendado)',
@@ -199,7 +201,6 @@ async function setupGlobalJira() {
 // ─── Comando principal ────────────────────────────────────
 
 export async function runConfig(section) {
-  // Se for chamado com 'credentials', abre direto as credenciais pessoais
   if (section === 'credentials') {
     printBanner();
     await setupUserEnv();
@@ -209,6 +210,7 @@ export async function runConfig(section) {
   printBanner();
   info('Configuração do projeto e preferências\n');
 
+  const isRepo = isGitRepo();
   const cwd = process.cwd();
   const configPath = path.join(cwd, '.jarvis-dev.json');
 
@@ -267,19 +269,23 @@ export async function runConfig(section) {
 
     const action = await select({
       message: 'O que deseja configurar?',
-      choices: [
-        { name: 'Jira — projectKey', value: 'jira.projectKey' },
-        { name: 'Jira — projectId', value: 'jira.projectId' },
-        { name: 'Jira — issueType', value: 'jira.issueType' },
+        choices: [
+        ...(isRepo ? [
+          { name: 'Jira — projectKey', value: 'jira.projectKey' },
+          { name: 'Jira — projectId', value: 'jira.projectId' },
+          { name: 'Jira — issueType', value: 'jira.issueType' },
+          { name: 'Git — branch protegida', value: 'git.protectedBranch' },
+          { name: 'Git — branch de desenvolvimento', value: 'git.developmentBranch' },
+        ] : []),
         { name: 'Jira global — configurar fallback para uso fora de projetos', value: 'globalJira' },
-        { name: 'Git — branch protegida', value: 'git.protectedBranch' },
-        { name: 'Git — branch de desenvolvimento', value: 'git.developmentBranch' },
         { name: 'UI — ao abrir jarvis (menu ou lista de comandos)', value: 'ui.launchMode' },
         { name: 'UI — ao selecionar projeto (aba / janela / cd)', value: 'ui.projectOpenMode' },
         { name: 'UI — estilo do menu (clássico / ao vivo)', value: 'ui.menuStyle' },
         { name: 'Projetos — workspace e lista gerenciada', value: 'ui.projects' },
         { name: 'Credenciais — configurar .env pessoal (Gemini, GitHub, Jira)', value: 'userEnv' },
-        { name: 'Salvar projeto e sair', value: 'save' },
+        ...(isRepo ? [
+          { name: 'Salvar projeto e sair', value: 'save' },
+        ] : []),
         { name: 'Sair sem salvar o projeto', value: 'exit' },
       ],
     });
@@ -290,6 +296,12 @@ export async function runConfig(section) {
     }
 
     if (action === 'save') {
+      if (!isRepo) {
+        warn('Fora de um repositório Git não é possível salvar .jarvis-dev.json.');
+        dim('Entre em um projeto Git para salvar a configuração do projeto.');
+        continue;
+      }
+
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
       success('.jarvis-dev.json salvo com sucesso!');
       blank();

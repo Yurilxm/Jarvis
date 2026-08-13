@@ -323,7 +323,6 @@ export async function jiraCreate() {
   printBanner();
   info('Criar nova task no Jira');
 
-  // ── Título (com sugestão da IA) ──────────────────────────
   const useAIForTitle = await confirm({
     message: 'Usar IA para sugerir título e descrição?',
     default: false,
@@ -331,19 +330,23 @@ export async function jiraCreate() {
 
   let summary = '';
   let description = '';
+  let idea = '';
 
   if (useAIForTitle) {
-    const ideia = await input({
+    idea = await input({
       message: 'Descreva a ideia da task em poucas palavras:',
       validate: (v) => v.trim().length > 0 ? true : 'Descreva a ideia.',
     });
+  }
 
+  async function generateWithAI() {
+    if (!idea) return false;
     const aiSpin = spinner('Gerando título e descrição com IA...');
     aiSpin.start();
     try {
       const prompt = `Você é um assistente de projeto. Com base na ideia abaixo, gere um título curto (máx 100 caracteres) e uma descrição detalhada (2-3 frases) para uma task do Jira.
 
-Ideia: ${ideia}
+Ideia: ${idea}
 
 Formato da resposta:
 TÍTULO: <título aqui>
@@ -353,30 +356,70 @@ DESCRIÇÃO: <descrição aqui>`;
       const titleMatch = response.match(/TÍTULO:\s*(.+)/);
       const descMatch = response.match(/DESCRIÇÃO:\s*([\s\S]+)/);
 
-      summary = titleMatch ? titleMatch[1].trim() : ideia;
+      summary = titleMatch ? titleMatch[1].trim() : idea;
       description = descMatch ? descMatch[1].trim() : '';
 
       aiSpin.succeed('Sugestão gerada pela IA');
+      return true;
     } catch {
-      aiSpin.fail('IA indisponível, usando ideia como título');
-      summary = ideia;
+      aiSpin.fail('IA indisponível. Você pode digitar manualmente.');
+      return false;
     }
   }
 
-  if (!summary) {
-    summary = await input({
-      message: 'Título da task:',
-      validate: (v) => v.trim().length > 0 ? true : 'Título é obrigatório.',
-    });
+  if (useAIForTitle) {
+    await generateWithAI();
   }
 
-  if (!description) {
-    description = await input({
-      message: 'Descrição (opcional):',
+  // Loop de revisão e edição
+  while (true) {
+    printBox(
+      `${chalk.bold('Título')}      ${summary || muted('não definido')}\n` +
+      `${chalk.bold('Descrição')}  ${description || muted('não definida')}`,
+      { title: 'revisar task' }
+    );
+
+    const action = await select({
+      message: 'O que deseja fazer?',
+      choices: [
+        { name: 'Aprovar e continuar', value: 'approve' },
+        { name: 'Editar título', value: 'edit-title' },
+        { name: 'Editar descrição', value: 'edit-description' },
+        ...(idea ? [{ name: 'Gerar novamente com IA', value: 'regenerate' }] : []),
+        { name: 'Cancelar', value: 'cancel' },
+      ],
     });
+
+    if (action === 'approve') {
+      break;
+    }
+
+    if (action === 'edit-title') {
+      summary = await input({
+        message: 'Título da task:',
+        default: summary,
+        validate: (v) => v.trim().length > 0 ? true : 'Título é obrigatório.',
+      });
+    }
+
+    if (action === 'edit-description') {
+      description = await input({
+        message: 'Descrição:',
+        default: description,
+      });
+    }
+
+    if (action === 'regenerate') {
+      await generateWithAI();
+    }
+
+    if (action === 'cancel') {
+      info('Criação de task cancelada.');
+      return;
+    }
   }
 
-  // ── Designar responsável (dinâmico da API) ──────────────
+  // Designar responsável
   const assignToMe = await confirm({
     message: 'Atribuir a você?',
     default: true,
@@ -384,7 +427,6 @@ DESCRIÇÃO: <descrição aqui>`;
 
   let assigneeId = null;
   if (assignToMe) {
-    // Buscar accountId do usuário logado
     try {
       const meResp = await fetch(`${getJiraBaseUrl()}/rest/api/3/myself`, {
         headers: { 'Authorization': getJiraAuthHeader(), 'Accept': 'application/json' }
@@ -395,7 +437,6 @@ DESCRIÇÃO: <descrição aqui>`;
       // fallback: não atribuir
     }
   } else {
-    // Buscar lista de assignees dinamicamente
     const spinUsers = spinner('Buscando usuários do projeto...');
     spinUsers.start();
     try {
@@ -417,7 +458,7 @@ DESCRIÇÃO: <descrição aqui>`;
     }
   }
 
-  // ── Status inicial ──────────────────────────────────────
+  // Status inicial
   const initialStatus = await select({
     message: 'Status inicial:',
     choices: [
@@ -441,7 +482,6 @@ DESCRIÇÃO: <descrição aqui>`;
   spin.start();
 
   try {
-    // Buscar tipo de issue válido para este projeto
     const typesResp = await fetch(
       `${getJiraBaseUrl()}/rest/api/3/issue/createmeta/${projectId}/issuetypes`,
       { headers: { 'Authorization': getJiraAuthHeader(), 'Accept': 'application/json' } }
@@ -463,7 +503,6 @@ DESCRIÇÃO: <descrição aqui>`;
       { title: 'task criada' }
     );
 
-    // Mover para o status escolhido
     if (initialStatus !== 'todo') {
       const transitions = await getTransitions(issue.key);
       let targetTransition;
@@ -484,7 +523,6 @@ DESCRIÇÃO: <descrição aqui>`;
       }
     }
 
-    // Criar branch se foi para "Em andamento"
     if (initialStatus === 'inprogress') {
       const shouldBranch = await confirm({
         message: `Criar branch feature/${issue.key}-descricao?`,

@@ -8,7 +8,7 @@ import { getProtectedBranch, getDevelopmentBranch } from '../config/branches.js'
 import { appendHistory } from '../history/store.js';
 import { loadProfile } from '../config/profile.js';
 import { buildSignature } from './signature.js';
-import { confirm, input, select } from '@inquirer/prompts';
+import { confirm, input, select, checkbox } from '@inquirer/prompts';
 import { execFileSync } from 'node:child_process';
 import {
   printBanner,
@@ -26,6 +26,7 @@ import {
   chalk,
   accent,
 } from '../ui.js';
+import { filterInternalPaths, shouldSuggestJarvisRelease } from './helpers.js';
 
 /**
  * Fluxo completo do assistente de commit.
@@ -129,12 +130,12 @@ export async function runCommitFlow() {
   }
 
   const status = getGitStatus();
-  const allChangedFiles = [
+  const allChangedFiles = filterInternalPaths ([
     ...status.staged,
     ...status.modified,
     ...status.deleted,
     ...status.untracked,
-  ];
+  ]);
 
   const uniqueFiles = [...new Set(allChangedFiles)];
 
@@ -156,12 +157,36 @@ export async function runCommitFlow() {
     process.exit(0);
   }
 
-  section(`Branch ${accent(branch)}  ·  ${safe.length} arquivo(s)`);
-  printFileList(safe);
+  // Seleção de arquivos
+  const stageMode = await select({
+    message: 'Como deseja commitar os arquivos?',
+    choices: [
+      { name: `Todos os ${safe.length} arquivo(s)`, value: 'all' },
+      { name: 'Selecionar arquivos manualmente', value: 'manual' },
+    ],
+  });
 
-  const safeSet = new Set(safe);
+  let selectedSafe = safe;
+
+  if (stageMode === 'manual') {
+    selectedSafe = await checkbox({
+      message: 'Selecione os arquivos para commitar:',
+      choices: safe.map((file) => ({ name: file, value: file })),
+      validate: (values) => values.length > 0 ? true : 'Selecione pelo menos um arquivo.',
+    });
+
+    if (selectedSafe.length === 0) {
+      info('Nenhum arquivo selecionado.');
+      process.exit(0);
+    }
+  }
+
+  section(`Branch ${accent(branch)}  ·  ${selectedSafe.length} arquivo(s)`);
+  printFileList(selectedSafe);
+
+  const safeSet = new Set(selectedSafe);
   const safeUntracked = status.untracked.filter((f) => safeSet.has(f));
-  const safeTracked = safe.filter((f) => !safeUntracked.includes(f));
+  const safeTracked = selectedSafe.filter((f) => !safeUntracked.includes(f));
 
   const rawDiff = getSafeDiff({ tracked: safeTracked, untracked: safeUntracked });
   const { sanitized, warnings } = sanitizeDiff(rawDiff);
@@ -239,9 +264,9 @@ export async function runCommitFlow() {
     message = message + '\n\n' + signature;
   }
 
-  info(`Executando git add em ${safe.length} arquivo(s) (respeitando ignore)...`);
+  info(`Executando git add em ${selectedSafe.length} arquivo(s) (respeitando ignore)...`);
   try {
-    stageFiles(safe);
+    stageFiles(selectedSafe);
   } catch (err) {
     error(`Erro ao executar git add: ${err.message}`);
     process.exit(1);
@@ -292,8 +317,8 @@ export async function runCommitFlow() {
     hash: commitHash,
     title,
     body,
-    files: safe,
-    fileCount: safe.length,
+    files: selectedSafe,
+    fileCount: selectedSafe.length,
     pushed: false,
     pushedAt: null,
   };
@@ -303,7 +328,6 @@ export async function runCommitFlow() {
     default: false,
   });
 
-  // Variável para controlar se o release já fez o merge
   let releaseDone = false;
 
   if (shouldPush) {
@@ -322,21 +346,30 @@ export async function runCommitFlow() {
       historyEntry.pushedAt = new Date().toISOString();
       appendHistory(historyEntry);
 
-      // Sugerir release baseado no tipo de commit
+      // Só sugere release automático quando estamos no próprio repositório do Jarvis
+      const remoteUrl = (() => {
+        try {
+          return execFileSync('git', ['config', '--get', 'remote.origin.url'], {
+            encoding: 'utf-8',
+          }).trim();
+        } catch {
+          return '';
+        }
+      })();
+
       const commitType = title.split(':')[0].trim();
-      const isFeat = commitType === 'feat';
-      const isFix = commitType === 'fix';
-      
-      if (isFeat || isFix) {
+
+      if (shouldSuggestJarvisRelease(remoteUrl, commitType)) {
         blank();
+        const isFeat = commitType === 'feat';
         const suggestedBump = isFeat ? 'minor' : 'patch';
         const bumpLabel = isFeat ? 'nova funcionalidade (minor)' : 'correção de bug (patch)';
-        
+
         const doRelease = await confirm({
           message: `Este commit parece ser uma ${bumpLabel}. Deseja criar uma release ${suggestedBump}?`,
           default: false,
         });
-        
+
         if (doRelease) {
           const { runReleaseFromCommit } = await import('./release.js');
           await runReleaseFromCommit(suggestedBump);
@@ -344,7 +377,6 @@ export async function runCommitFlow() {
         }
       }
 
-      // Só pergunta sobre o merge se o release não foi feito
       if (currentBranchAfterCommit === developmentBranch && !releaseDone) {
         blank();
         const mergeChoice = await select({
