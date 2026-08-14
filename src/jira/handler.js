@@ -1,4 +1,4 @@
-import { jiraList, jiraView, jiraStatus, jiraMove, jiraCreate } from './flow.js';
+import { jiraList, jiraView, jiraStatus, jiraMove, jiraCreate, jiraEdit, jiraDelete } from './flow.js';
 import { error, dim } from '../ui.js';
 
 export async function handleJiraCommand(sub, issueKey) {
@@ -16,9 +16,15 @@ export async function handleJiraCommand(sub, issueKey) {
     await jiraMove(issueKey);
   } else if (sub === 'create') {
     await jiraCreate();
+  } else if (sub === 'edit') {
+    if (!issueKey) { error('Chave da issue é obrigatória.'); process.exit(1); }
+    await jiraEdit(issueKey);
+  } else if (sub === 'delete') {
+    if (!issueKey) { error('Chave da issue é obrigatória.'); process.exit(1); }
+    await jiraDelete(issueKey);
   } else {
     error(`Subcomando desconhecido: ${sub}`);
-    dim('Use: list [active|all|done], view <issue>, status <issue>, move <issue>, create');
+    dim('Use: list [active|all|done], view <issue>, status <issue>, move <issue>, create, edit <issue>, delete <issue>');
     process.exit(1);
   }
 }

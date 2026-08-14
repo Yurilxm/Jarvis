@@ -47,6 +47,8 @@ export const COMMAND_CATALOG = [
   { id: 'jira-view', section: 'jira', label: 'jarvis jira view', description: 'Detalhes de uma issue.', keywords: ['issue'], argv: ['jira', 'view'], needsArg: { message: 'Chave da issue (ex: SDG-71):', validate: (v) => (v.trim() ? true : 'Informe a chave') } },
   { id: 'jira-move', section: 'jira', label: 'jarvis jira move', description: 'Move issue para outro status.', keywords: ['status'], argv: ['jira', 'move'], needsArg: { message: 'Chave da issue (ex: SDG-71):', validate: (v) => (v.trim() ? true : 'Informe a chave') } },
   { id: 'jira-create', section: 'jira', label: 'jarvis jira create', description: 'Cria nova task (IA opcional).', keywords: ['task'], argv: ['jira', 'create'] },
+  { id: 'jira-edit', section: 'jira', label: 'jarvis jira edit', description: 'Edita título, descrição ou responsável de uma issue.', keywords: ['editar', 'update'], argv: ['jira', 'edit'], needsArg: { message: 'Chave da issue (ex: SDG-71):', validate: (v) => (v.trim() ? true : 'Informe a chave') } },
+  { id: 'jira-delete', section: 'jira', label: 'jarvis jira delete', description: 'Exclui uma issue permanentemente.', keywords: ['excluir', 'remover'], argv: ['jira', 'delete'], needsArg: { message: 'Chave da issue (ex: SDG-71):', validate: (v) => (v.trim() ? true : 'Informe a chave') } },
 
   { id: 'profile-setup', section: 'perfil', label: 'jarvis profile setup', description: 'Configura perfil do desenvolvedor.', keywords: ['usuario'], argv: ['profile', 'setup'] },
   { id: 'profile-show', section: 'perfil', label: 'jarvis profile show', description: 'Mostra perfil atual.', keywords: ['usuario'], argv: ['profile', 'show'] },
@@ -93,6 +95,8 @@ const SUMMARIES = {
   'jira-view': 'Detalhes de uma issue',
   'jira-move': 'Move issue para outro status',
   'jira-create': 'Cria nova task (com IA opcional)',
+  'jira-edit': 'Edita título, descrição ou responsável de uma issue',
+  'jira-delete': 'Exclui uma issue permanentemente',
   'profile-setup': 'Configura perfil do desenvolvedor',
   'profile-show': 'Mostra perfil atual',
   'profile-edit': 'Edita perfil manualmente',
@@ -114,6 +118,8 @@ const DISPLAY_LABELS = {
   'jira-list': 'jarvis jira list [active|all|done]',
   'jira-view': 'jarvis jira view <issue>',
   'jira-move': 'jarvis jira move <issue>',
+  'jira-edit': 'jarvis jira edit <issue>',
+  'jira-delete': 'jarvis jira delete <issue>',
   scan: 'jarvis scan [profundidade]',
   add: 'jarvis add [caminho]',
 };

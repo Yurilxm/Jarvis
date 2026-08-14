@@ -44,6 +44,8 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Exibe detalhes de uma issue com descrição formatada
 - Move issues entre status (`To Do`, `In Progress`, `Done`)
 - Cria novas tasks com suporte a IA para título e descrição, com fluxo de revisão completo (aprovar, editar título e descrição manualmente, gerar novamente ou cancelar antes de criar)
+- Edita título, descrição ou responsável de issues existentes com pré-visualização das alterações
+- Exclui issues permanentemente com confirmação dupla de segurança (digitação da chave da issue)
 - Atribuição dinâmica de responsáveis (busca da API do Jira)
 - Cria branches automaticamente ao iniciar uma issue
 - Configuração interativa por projeto via `jarvis config`, arquivo `.jarvis-dev.json`, ou fallback global (`~/.jarvis-dev/jira.json`) para uso fora de repositórios Git
@@ -78,7 +80,7 @@ Assistente de desenvolvimento por linha de comando — commits inteligentes, ges
 - Preferências globais em `~/.jarvis/preferences.json`
 
 ### Testes
-- 30 suítes / 121 testes com Jest, cobrindo: fluxo de commit (mensagem, assinatura, seleção manual de arquivos), Git (status, diff, branch), Gemini, Jira (client, config, criação de task, fallback global), GitHub PR, gestão de projetos e workspace (scan, add, switch, reader), menu interativo, roteamento de CLI, preferências, sanitização de dados sensíveis, geração de prompts (review/docs), versionamento semântico, controle de uso/cota, abertura de terminal e ignore de arquivos (`npm test`)
+- 31 suítes / 125 testes com Jest, cobrindo: fluxo de commit (mensagem, assinatura, seleção manual de arquivos), Git (status, diff, branch), Gemini, Jira (client, config, criação de task, edição, exclusão, fallback global), GitHub PR, gestão de projetos e workspace (scan, add, switch, reader), menu interativo, roteamento de CLI, preferências, sanitização de dados sensíveis, geração de prompts (review/docs), versionamento semântico, controle de uso/cota, abertura de terminal e ignore de arquivos (`npm test`)
 
 ## 🛠️ Requisitos
 
@@ -337,6 +339,8 @@ Rode `jarvis` sem argumentos para o menu (ou a lista de comandos, conforme a pre
 | `jarvis jira view <issue>` | Mostra os detalhes de uma issue |
 | `jarvis jira move <issue>` | Move uma issue para outro status |
 | `jarvis jira create` | Cria uma nova task, com IA e fluxo de revisão (editar título/descrição antes de criar) |
+| `jarvis jira edit <issue>` | Edita título, descrição ou responsável de uma issue |
+| `jarvis jira delete <issue>` | Exclui uma issue permanentemente |
 
 **Perfil**
 
@@ -414,6 +418,8 @@ jarvis jira list done
 jarvis jira view SDG-68
 jarvis jira move SDG-68
 jarvis jira create
+jarvis jira edit SDG-68
+jarvis jira delete SDG-68
 ```
 
 **Iniciar um projeto novo**

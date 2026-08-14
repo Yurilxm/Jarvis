@@ -205,6 +205,8 @@ function showHelpText() {
       ['jarvis jira view <issue>', 'Detalhes de uma issue'],
       ['jarvis jira move <issue>', 'Move issue para outro status'],
       ['jarvis jira create', 'Cria nova task (com IA opcional)'],
+      ['jarvis jira edit <issue>', 'Edita título, descrição ou responsável'],
+      ['jarvis jira delete <issue>', 'Exclui uma issue permanentemente'],
     ]},
     { title: 'perfil', commands: [
       ['jarvis profile setup', 'Configura perfil do desenvolvedor'],

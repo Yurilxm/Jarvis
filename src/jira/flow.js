@@ -1,4 +1,4 @@
-import { listIssues, getIssue, getTransitions, transitionIssue, createIssue, getAssignableUsers } from './client.js';
+import { listIssues, getIssue, getTransitions, transitionIssue, createIssue, getAssignableUsers, updateIssue, deleteIssue } from './client.js';
 import { getJiraConfig, getJiraBaseUrl, getJiraAuthHeader } from '../config/jira.js';
 import { getProjectConfig } from '../config/project.js';
 import { confirm, input, select } from '@inquirer/prompts';
@@ -548,6 +548,205 @@ DESCRIÇÃO: <descrição aqui>`;
     }
   } catch (err) {
     spin.fail('Erro ao criar task');
+    error(err.message);
+  }
+}
+
+// ─── edit ─────────────────────────────────────────────────────────────
+
+export async function jiraEdit(issueKey) {
+  requireConfig();
+
+  try {
+    const issue = await getIssue(issueKey);
+    const { fields } = issue;
+
+    let descText = '';
+    if (fields.description) {
+      if (typeof fields.description === 'string') {
+        descText = fields.description;
+      } else if (fields.description.content) {
+        descText = adfToText(fields.description);
+      }
+    }
+
+    blank();
+    printBox(
+      `${chalk.bold('Título')}      ${fields.summary}\n` +
+      `${chalk.bold('Descrição')}  ${descText || muted('Nenhuma')}\n` +
+      `${chalk.bold('Responsável')} ${fields.assignee?.displayName || muted('Não atribuído')}`,
+      { title: `editar ${issueKey}` }
+    );
+
+    section('O que deseja editar?');
+
+    const what = await select({
+      message: 'Selecione o campo:',
+      choices: [
+        { name: 'Título', value: 'summary' },
+        { name: 'Descrição', value: 'description' },
+        { name: 'Responsável', value: 'assignee' },
+        { name: 'Tudo (título + descrição + responsável)', value: 'all' },
+        { name: 'Cancelar', value: 'cancel' },
+      ],
+    });
+
+    if (what === 'cancel') {
+      info('Edição cancelada.');
+      return;
+    }
+
+    let newSummary;
+    let newDescription;
+    let newAssigneeId;
+
+    if (what === 'summary' || what === 'all') {
+      newSummary = await input({
+        message: 'Novo título:',
+        default: fields.summary,
+        validate: (v) => v.trim().length > 0 ? true : 'Título é obrigatório.',
+      });
+    }
+
+    if (what === 'description' || what === 'all') {
+      newDescription = await input({
+        message: 'Nova descrição (vazio remove):',
+        default: descText,
+      });
+    }
+
+    if (what === 'assignee' || what === 'all') {
+      const projectKey = getProjectConfig('jira.projectKey') || fields.project?.key;
+      if (projectKey) {
+        const spinUsers = spinner('Buscando usuários do projeto...');
+        spinUsers.start();
+        try {
+          const users = await getAssignees(projectKey);
+          spinUsers.succeed(`${users.length} usuários encontrados`);
+
+          const choices = users
+            .filter(u => u.active)
+            .map(u => ({ name: u.displayName, value: u.accountId }));
+          choices.push({ name: 'Não atribuir', value: null });
+
+          newAssigneeId = await select({
+            message: 'Atribuir para:',
+            choices,
+            default: fields.assignee?.accountId || null,
+          });
+        } catch {
+          spinUsers.fail('Não foi possível buscar usuários');
+        }
+      } else {
+        warn('Project key não configurada — não é possível buscar usuários.');
+      }
+    }
+
+    // Mostrar resumo das alterações
+    const changes = [];
+    if (newSummary && newSummary !== fields.summary) {
+      changes.push(`${muted('Título:')} ${fields.summary} → ${chalk.green(newSummary)}`);
+    }
+    if (newDescription !== undefined && newDescription !== descText) {
+      const oldDesc = descText ? muted(descText) : muted('(vazio)');
+      const newDesc = newDescription ? chalk.green(newDescription) : muted('(vazio)');
+      changes.push(`${muted('Descrição:')} ${oldDesc} → ${newDesc}`);
+    }
+    if (newAssigneeId !== undefined && newAssigneeId !== (fields.assignee?.accountId || null)) {
+      const oldAssignee = fields.assignee?.displayName || muted('Não atribuído');
+      const newAssignee = newAssigneeId ? chalk.green('Novo responsável') : muted('Não atribuir');
+      changes.push(`${muted('Responsável:')} ${oldAssignee} → ${newAssignee}`);
+    }
+
+    if (changes.length === 0) {
+      info('Nenhuma alteração realizada.');
+      return;
+    }
+
+    blank();
+    printBox(changes.join('\n'), { title: 'confirmar alterações' });
+
+    const confirmed = await confirm({
+      message: 'Aplicar essas alterações?',
+      default: true,
+    });
+
+    if (!confirmed) {
+      info('Edição cancelada.');
+      return;
+    }
+
+    const spin = spinner('Atualizando issue...');
+    spin.start();
+
+    try {
+      const updateFields = {};
+      if (newSummary) updateFields.summary = newSummary;
+      if (newDescription !== undefined) updateFields.description = newDescription;
+      if (newAssigneeId !== undefined) updateFields.assigneeId = newAssigneeId;
+
+      await updateIssue(issueKey, updateFields);
+      spin.succeed(`${issueKey} atualizada com sucesso!`);
+    } catch (err) {
+      spin.fail('Erro ao atualizar');
+      error(err.message);
+    }
+  } catch (err) {
+    error(err.message);
+  }
+}
+
+// ─── delete ───────────────────────────────────────────────────────────
+
+export async function jiraDelete(issueKey) {
+  requireConfig();
+
+  try {
+    const issue = await getIssue(issueKey);
+    const { fields } = issue;
+
+    blank();
+    warn('ATENÇÃO: Esta ação NÃO pode ser desfeita!');
+    blank();
+    printBox(
+      `${chalk.bold(issueKey)} — ${chalk.yellow(fields.summary)}\n` +
+      `${muted('Status:')} ${fields.status.name}\n` +
+      `${muted('Responsável:')} ${fields.assignee?.displayName || 'Não atribuído'}\n` +
+      `${muted('Repórter:')} ${fields.reporter?.displayName || '-'}`,
+      { title: 'excluir issue', borderColor: 'red' }
+    );
+
+    const confirmed = await confirm({
+      message: `Excluir ${issueKey} permanentemente?`,
+      default: false,
+    });
+
+    if (!confirmed) {
+      info('Exclusão cancelada.');
+      return;
+    }
+
+    const typedConfirm = await input({
+      message: `Digite ${issueKey} para confirmar:`,
+      validate: (v) => v.trim() === issueKey ? true : `Digite exatamente ${issueKey}`,
+    });
+
+    if (typedConfirm.trim() !== issueKey) {
+      info('Exclusão cancelada.');
+      return;
+    }
+
+    const spin = spinner('Excluindo issue...');
+    spin.start();
+
+    try {
+      await deleteIssue(issueKey);
+      spin.succeed(`${issueKey} excluída com sucesso!`);
+    } catch (err) {
+      spin.fail('Erro ao excluir');
+      error(err.message);
+    }
+  } catch (err) {
     error(err.message);
   }
 }
