@@ -43,7 +43,8 @@ export async function runCommitFlow() {
   if (!isGitRepo()) {
     error('Este diretório não é um repositório Git.');
     dim('Execute o Jarvis dentro de um projeto com git, ou rode: jarvis init');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const branch = getCurrentBranch();
@@ -63,7 +64,7 @@ export async function runCommitFlow() {
 
     if (choice === 'cancel') {
       info('Commit cancelado.');
-      process.exit(0);
+      return;
     }
 
     if (choice === 'switch') {
@@ -77,7 +78,7 @@ export async function runCommitFlow() {
 
         if (!forceChoice) {
           info('Faça commit ou stash das alterações e tente novamente.');
-          process.exit(0);
+          return;
         }
       }
 
@@ -94,24 +95,26 @@ export async function runCommitFlow() {
           const createResult = createBranch(developmentBranch);
           if (!createResult.success) {
             error(createResult.message);
-            process.exit(1);
+            process.exitCode = 1;
+            return;
           }
           success(`Branch '${developmentBranch}' criada.`);
 
           result = switchBranch(developmentBranch);
           if (!result.success) {
             error(`Não foi possível trocar para '${developmentBranch}': ${result.message}`);
-            process.exit(1);
+            process.exitCode = 1;
+            return;
           }
         } else {
           info('Commit cancelado. Crie a branch dev com: jarvis branch create dev');
-          process.exit(0);
+          return;
         }
       }
 
       success(`Agora você está na branch '${developmentBranch}'.`);
       dim('Execute jarvis commit novamente para commitar suas alterações.');
-      process.exit(0);
+      return;
     }
 
     if (choice === 'continue') {
@@ -122,7 +125,7 @@ export async function runCommitFlow() {
 
       if (!confirmed) {
         info('Commit cancelado.');
-        process.exit(0);
+        return;
       }
 
       warn(`Prosseguindo com commit na '${protectedBranch}'...`);
@@ -130,7 +133,7 @@ export async function runCommitFlow() {
   }
 
   const status = getGitStatus();
-  const allChangedFiles = filterInternalPaths ([
+  const allChangedFiles = filterInternalPaths([
     ...status.staged,
     ...status.modified,
     ...status.deleted,
@@ -141,7 +144,7 @@ export async function runCommitFlow() {
 
   if (uniqueFiles.length === 0) {
     info('Nenhuma alteração detectada. Não há nada para commit.');
-    process.exit(0);
+    return;
   }
 
   const { safe, blocked, ignoreSource } = filterSensitiveFiles(uniqueFiles);
@@ -154,7 +157,7 @@ export async function runCommitFlow() {
 
   if (safe.length === 0) {
     info('Todos os arquivos alterados estão na lista de ignore. Nada a analisar.');
-    process.exit(0);
+    return;
   }
 
   // Seleção de arquivos
@@ -177,7 +180,7 @@ export async function runCommitFlow() {
 
     if (selectedSafe.length === 0) {
       info('Nenhum arquivo selecionado.');
-      process.exit(0);
+      return;
     }
   }
 
@@ -197,7 +200,7 @@ export async function runCommitFlow() {
 
   if (!sanitized.trim()) {
     info('Nenhum conteúdo relevante no diff para analisar.');
-    process.exit(0);
+    return;
   }
 
   const prompt = buildCommitPrompt(sanitized);
@@ -210,7 +213,8 @@ export async function runCommitFlow() {
     gen.succeed('Mensagem gerada.');
   } catch (err) {
     gen.fail(`Erro ao comunicar com a IA: ${err.message}`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   while (true) {
@@ -229,7 +233,7 @@ export async function runCommitFlow() {
 
     if (choice === 'c') {
       info('Commit cancelado.');
-      process.exit(0);
+      return;
     }
 
     if (choice === 'a') {
@@ -252,7 +256,8 @@ export async function runCommitFlow() {
         regen.succeed('Nova mensagem gerada.');
       } catch (err) {
         regen.fail(`Erro ao comunicar com a IA: ${err.message}`);
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
     }
   }
@@ -269,7 +274,8 @@ export async function runCommitFlow() {
     stageFiles(selectedSafe);
   } catch (err) {
     error(`Erro ao executar git add: ${err.message}`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   info('Executando git commit...');
@@ -297,7 +303,8 @@ export async function runCommitFlow() {
   } catch (err) {
     error(`Erro ao executar git commit: ${err.message}`);
     dim('Os arquivos foram adicionados (git add) mas o commit falhou.');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   success('Commit realizado com sucesso!');
@@ -399,7 +406,8 @@ export async function runCommitFlow() {
       appendHistory(historyEntry);
       error(`Erro ao executar git push: ${err.message}`);
       dim('O commit foi feito localmente, mas o push falhou.');
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   } else {
     appendHistory(historyEntry);

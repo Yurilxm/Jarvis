@@ -31,7 +31,8 @@ export async function runReviewFlow(scope = 'all') {
   if (!isGitRepo()) {
     error('Este diretório não é um repositório Git.');
     dim('Execute o Jarvis dentro de um projeto com git.');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const status = getGitStatus();
@@ -43,7 +44,7 @@ export async function runReviewFlow(scope = 'all') {
 
   if (uniqueFiles.length === 0) {
     info('Nenhuma alteração detectada para revisar.');
-    process.exit(0);
+    return;
   }
 
   const { safe, blocked, ignoreSource } = filterSensitiveFiles(uniqueFiles);
@@ -55,7 +56,7 @@ export async function runReviewFlow(scope = 'all') {
 
   if (safe.length === 0) {
     info('Todos os arquivos alterados estão na lista de ignore.');
-    process.exit(0);
+    return;
   }
 
   section(`Revisando ${safe.length} arquivo(s)`);
@@ -74,7 +75,7 @@ export async function runReviewFlow(scope = 'all') {
 
   if (!sanitized.trim()) {
     info('Nenhum conteúdo relevante no diff para revisar.');
-    process.exit(0);
+    return;
   }
 
   // Verificar tamanho do diff
@@ -104,6 +105,7 @@ export async function runReviewFlow(scope = 'all') {
   } catch (err) {
     spin.fail('Erro ao comunicar com a IA');
     error(err.message);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }

@@ -150,7 +150,13 @@ Responda em português, de forma clara e direta:
 
 NÃO diga se a PR deve ser aprovada ou não. Apenas analise.`;
 
-  const analysis = await askAI(prompt);
+  let analysis;
+  try {
+    analysis = await askAI(prompt);
+  } catch (err) {
+    console.error(chalk.red(`${logSymbols.error} Erro ao consultar a IA: ${err.message}`));
+    return;
+  }
 
   console.log(chalk.bold(`\n${logSymbols.info} Análise da IA para PR #${pr.number}:\n`));
   console.log(chalk.dim('─'.repeat(50)));

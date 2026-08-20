@@ -6,6 +6,7 @@ import { askAI } from '../ai/client.js';
 import { confirm, input } from '@inquirer/prompts';
 import fs from 'node:fs';
 import path from 'node:path';
+import { getDirectoryTree, getKeyFiles, readFileContent } from '../utils/project-reader.js';
 import {
   printBanner,
   printBox,
@@ -23,6 +24,7 @@ import {
 } from '../ui.js';
 
 const MAX_DIFF_SIZE = 15000;
+const MAX_CONTEXT_CHARS = 15000;
 
 /**
  * Fluxo de geração de documentação.
@@ -33,7 +35,8 @@ export async function runDocsFlow(docType = 'readme') {
 
   if (!isGitRepo()) {
     error('Este diretório não é um repositório Git.');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const outputFile = docType === 'changelog' ? 'CHANGELOG.md' : 'README.md';
@@ -43,20 +46,53 @@ export async function runDocsFlow(docType = 'readme') {
   const allFiles = [...status.staged, ...status.modified, ...status.untracked];
   const uniqueFiles = [...new Set(allFiles)];
 
-  if (uniqueFiles.length === 0) {
-    info('Nenhuma alteração detectada. Gerando documentação baseada no projeto...');
+  let diffToUse = '';
+  let projectContext = '';
+
+  // Se for README e não houver alterações no Git, gerar documentação a partir
+  // da estrutura do projeto (árvore + arquivos principais).
+  if (docType === 'readme' && uniqueFiles.length === 0) {
+    const rootDir = process.cwd();
+    const projectName = path.basename(rootDir);
+    const tree = getDirectoryTree(rootDir, 3);
+    const keyFiles = getKeyFiles(rootDir, [
+      '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.scss', '.less',
+      '.json', '.md', '.py', '.php', '.rb', '.go', '.java', '.cs',
+      '.sql', '.yml', '.yaml', '.env.example', '.txt',
+    ]);
+
+    let filesContent = '';
+    let totalChars = tree.length;
+
+    for (const file of keyFiles.slice(0, 15)) {
+      const content = readFileContent(file.path);
+      const sanitized = sanitizeDiff(content).sanitized;
+      const chunk = `\n### ${path.relative(rootDir, file.path)} (${file.size} bytes)\n\`\`\`\n${sanitized}\n\`\`\`\n`;
+      if (totalChars + chunk.length > MAX_CONTEXT_CHARS) break;
+      filesContent += chunk;
+      totalChars += chunk.length;
+    }
+
+    projectContext = `Projeto: ${projectName}\n\n## Estrutura de diretórios\n${tree}\n\n## Arquivos principais\n${filesContent}`;
+    info('Nenhuma alteração detectada. Gerando documentação baseada na estrutura do projeto...');
+  } else {
+    // Se for changelog sem alterações, não faz sentido gerar/atualizar.
+    if (docType === 'changelog' && uniqueFiles.length === 0) {
+      info('Nenhuma alteração detectada. Changelog não será atualizado.');
+      return;
+    }
+
+    const { safe } = filterSensitiveFiles(uniqueFiles);
+
+    const safeSet = new Set(safe.length > 0 ? safe : uniqueFiles);
+    const safeUntracked = status.untracked.filter((f) => safeSet.has(f));
+    const safeTracked = (safe.length > 0 ? safe : uniqueFiles).filter((f) => !safeUntracked.includes(f));
+
+    const rawDiff = getSafeDiff({ tracked: safeTracked, untracked: safeUntracked });
+    const { sanitized } = sanitizeDiff(rawDiff);
+
+    diffToUse = sanitized.substring(0, MAX_DIFF_SIZE);
   }
-
-  const { safe } = filterSensitiveFiles(uniqueFiles);
-
-  const safeSet = new Set(safe.length > 0 ? safe : uniqueFiles);
-  const safeUntracked = status.untracked.filter((f) => safeSet.has(f));
-  const safeTracked = (safe.length > 0 ? safe : uniqueFiles).filter((f) => !safeUntracked.includes(f));
-
-  const rawDiff = getSafeDiff({ tracked: safeTracked, untracked: safeUntracked });
-  const { sanitized } = sanitizeDiff(rawDiff);
-
-  const diffToUse = sanitized.substring(0, MAX_DIFF_SIZE);
 
   // Se o arquivo já existe, incluir conteúdo atual no prompt para atualização
   let existingContent = '';
@@ -64,7 +100,7 @@ export async function runDocsFlow(docType = 'readme') {
     existingContent = fs.readFileSync(outputPath, 'utf-8');
   }
 
-  const prompt = buildDocsPrompt(diffToUse, docType, existingContent);
+  const prompt = buildDocsPrompt(diffToUse, docType, existingContent, projectContext);
 
   // Gerar proposta
   let docContent;
@@ -76,7 +112,8 @@ export async function runDocsFlow(docType = 'readme') {
   } catch (err) {
     gen.fail('Erro ao comunicar com a IA');
     error(err.message);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   // Loop de aprovação (igual ao commit)
@@ -136,7 +173,7 @@ export async function runDocsFlow(docType = 'readme') {
 
     if (choice === 'c') {
       info('Geração cancelada.');
-      process.exit(0);
+      return;
     }
 
     if (choice === 'a') {
@@ -159,7 +196,9 @@ export async function runDocsFlow(docType = 'readme') {
         regen.succeed('Nova versão gerada.');
       } catch (err) {
         regen.fail('Erro');
-        process.exit(1);
+        error(err.message);
+        process.exitCode = 1;
+        return;
       }
     }
   }
@@ -173,7 +212,7 @@ export async function runDocsFlow(docType = 'readme') {
 
     if (!overwrite) {
       info('Salvamento cancelado.');
-      process.exit(0);
+      return;
     }
   }
 
@@ -184,6 +223,7 @@ export async function runDocsFlow(docType = 'readme') {
     dim(`Caminho: ${outputPath}`);
   } catch (err) {
     error(`Erro ao salvar arquivo: ${err.message}`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }

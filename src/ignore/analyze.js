@@ -79,7 +79,12 @@ export async function suggestIgnorePatterns(cwd = process.cwd()) {
   }
 
   const prompt = buildIgnoreSuggestPrompt(paths);
-  const response = await askAI(prompt);
+  let response;
+  try {
+    response = await askAI(prompt);
+  } catch {
+    return [];
+  }
   const { allActive } = getIgnoreInventory(cwd);
   const active = new Set(allActive);
 
