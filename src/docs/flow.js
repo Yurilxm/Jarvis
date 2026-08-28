@@ -6,7 +6,11 @@ import { askAI } from '../ai/client.js';
 import { confirm, input } from '@inquirer/prompts';
 import fs from 'node:fs';
 import path from 'node:path';
-import { getDirectoryTree, getKeyFiles, readFileContent } from '../utils/project-reader.js';
+import {
+  getDirectoryTree,
+  getKeyFilesByModule,
+  readFileContent,
+} from '../utils/project-reader.js';
 import {
   printBanner,
   printBox,
@@ -24,7 +28,7 @@ import {
 } from '../ui.js';
 
 const MAX_DIFF_SIZE = 15000;
-const MAX_CONTEXT_CHARS = 15000;
+const MAX_CONTEXT_CHARS = 50000;
 
 /**
  * Fluxo de geração de documentação.
@@ -54,17 +58,60 @@ export async function runDocsFlow(docType = 'readme') {
   if (docType === 'readme' && uniqueFiles.length === 0) {
     const rootDir = process.cwd();
     const projectName = path.basename(rootDir);
-    const tree = getDirectoryTree(rootDir, 3);
-    const keyFiles = getKeyFiles(rootDir, [
+    const tree = getDirectoryTree(rootDir, 4);
+
+    const autoKeyFiles = getKeyFilesByModule(rootDir, [
       '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.scss', '.less',
       '.json', '.md', '.py', '.php', '.rb', '.go', '.java', '.cs',
       '.sql', '.yml', '.yaml', '.env.example', '.txt',
     ]);
 
+    // Arquivos importantes que costumam revelar stack, scripts e configurações
+    // e que podem não aparecer entre os maiores arquivos detectados automaticamente.
+    const importantFileNames = [
+      'package.json',
+      'requirements.txt',
+      'pyproject.toml',
+      'Pipfile',
+      'Pipfile.lock',
+      'Dockerfile',
+      'docker-compose.yml',
+      'docker-compose.yaml',
+      '.env.example',
+      '.gitignore',
+      'LICENSE',
+      'manage.py',
+    ];
+
+    const importantFiles = [];
+    for (const name of importantFileNames) {
+      const filePath = path.join(rootDir, name);
+      if (!fs.existsSync(filePath)) continue;
+
+      try {
+        const stats = fs.statSync(filePath);
+        if (stats.isFile() && stats.size < 200 * 1024) {
+          importantFiles.push({ path: filePath, size: stats.size });
+        }
+      } catch {
+        // ignora arquivo inacessível
+      }
+    }
+
+    // Junta importantes + detectados, sem duplicar caminhos.
+    const contextFiles = [...importantFiles];
+    for (const file of autoKeyFiles) {
+      if (!contextFiles.some((f) => f.path === file.path)) {
+        contextFiles.push(file);
+      }
+    }
+
+    const finalFiles = contextFiles.slice(0, 30);
+
     let filesContent = '';
     let totalChars = tree.length;
 
-    for (const file of keyFiles.slice(0, 15)) {
+    for (const file of finalFiles) {
       const content = readFileContent(file.path);
       const sanitized = sanitizeDiff(content).sanitized;
       const chunk = `\n### ${path.relative(rootDir, file.path)} (${file.size} bytes)\n\`\`\`\n${sanitized}\n\`\`\`\n`;
@@ -120,7 +167,6 @@ export async function runDocsFlow(docType = 'readme') {
   while (true) {
     blank();
     if (existingContent && existingContent !== docContent) {
-      // Mostrar diff visual: linhas adicionadas em verde, removidas em vermelho
       section(`Alterações em ${outputFile}:`);
       const existingLines = existingContent.split('\n');
       const newLines = docContent.split('\n');
@@ -130,22 +176,24 @@ export async function runDocsFlow(docType = 'readme') {
       let removedCount = 0;
 
       for (let i = 0; i < maxLen; i++) {
-        const oldLine = existingLines[i];
-        const newLine = newLines[i];
+        // Garante que linhas ausentes sejam tratadas como string vazia
+        const oldLine = existingLines[i] ?? '';
+        const newLine = newLines[i] ?? '';
 
         if (oldLine === newLine) {
-          // Linha igual: mostra normal se estiver nas primeiras/últimas 3, senão pula
           if (i < 3 || i > maxLen - 4) {
-            console.log(dim(`  ${oldLine || ''}`));
+            if (oldLine !== '') {
+              console.log(dim(`  ${oldLine}`));
+            }
           } else if (i === 3 && maxLen > 8) {
             console.log(dim('  ...'));
           }
         } else {
-          if (oldLine !== undefined) {
+          if (oldLine !== '') {
             console.log(chalk.red(`- ${oldLine}`));
             removedCount++;
           }
-          if (newLine !== undefined) {
+          if (newLine !== '') {
             console.log(chalk.green(`+ ${newLine}`));
             addedCount++;
           }
@@ -156,7 +204,6 @@ export async function runDocsFlow(docType = 'readme') {
       info(`${chalk.green(`+${addedCount} adições`)}  ${chalk.red(`-${removedCount} remoções`)}`);
       blank();
     } else {
-      // Arquivo novo: mostrar conteúdo completo
       printBox(docContent, { title: `novo: ${outputFile}`, borderColor: 'green' });
     }
 

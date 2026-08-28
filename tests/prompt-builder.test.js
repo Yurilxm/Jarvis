@@ -49,7 +49,7 @@ describe('buildDocsPrompt', () => {
   it('deve incluir conteúdo existente quando fornecido', () => {
     const prompt = buildDocsPrompt('diff', 'readme', 'README existente');
     expect(prompt).toContain('README existente');
-    expect(prompt).toContain('ATUALIZE o documento existente');
+    expect(prompt).toContain('MELHORE o documento existente');
   });
 
   it('deve gerar novo quando não há conteúdo existente', () => {

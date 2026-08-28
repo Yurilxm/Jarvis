@@ -25,7 +25,7 @@ describe('buildDocsPrompt', () => {
 
   it('atualiza changelog existente', () => {
     const prompt = buildDocsPrompt('+fix', 'changelog', '# Changelog\n');
-    expect(prompt).toContain('ATUALIZE o documento existente');
+    expect(prompt).toContain('MELHORE o documento existente');
     expect(prompt).toContain('### Corrigido');
     expect(prompt).toContain('# Changelog');
   });
