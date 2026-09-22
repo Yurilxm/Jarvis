@@ -76,9 +76,12 @@ async function bootstrap() {
     arg = picked.argv[2];
     command = resolveCommand(command);
   }
-  // Sincroniza silenciosamente commits manuais (feitos fora do Jarvis)
-  // Ignora quando o comando é 'history' (o próprio comando faz o sync e mostra o resultado)
-  if (command !== 'history' && !process.argv.includes('--no-sync')) {
+
+  // Sincroniza silenciosamente commits manuais (feitos fora do Jarvis).
+  // Só pula quando o próprio comando é `jarvis history sync` (que faz o sync
+  // explícito e mostra o resultado) ou quando `--no-sync` é passado.
+  const isHistorySync = command === 'history' && subcommand === 'sync';
+  if (!isHistorySync && !process.argv.includes('--no-sync')) {
     try {
       const result = syncHistoryFromGit({ limit: 50 });
       if (result.added > 0) {
@@ -92,7 +95,6 @@ async function bootstrap() {
 
   await main();
 }
-
 
 async function main() {
   if (command === 'init') await runInitFlow();
@@ -156,13 +158,14 @@ async function main() {
     const hasConfig = allArgs.includes('--config');
     const hasSetup = allArgs.includes('--setup');
     const hasWake = allArgs.includes('--wake');
+    const hasConfirm = allArgs.includes('--confirm');
 
     const modelIdx = allArgs.indexOf('--model');
     const model = modelIdx !== -1 ? allArgs[modelIdx + 1] : undefined;
 
     const flags = new Set([
       '--run', '--ouvir', '--listar-microfones',
-      '--config', '--setup', '--model', '--wake',
+      '--config', '--setup', '--model', '--wake', '--confirm',
     ]);
     const textArg = allArgs.find((a) => !flags.has(a) && !a.startsWith('--'));
 
@@ -173,6 +176,7 @@ async function main() {
       config: hasConfig,
       setup: hasSetup,
       wake: hasWake,
+      confirm: hasConfirm,
       model,
     });
   }

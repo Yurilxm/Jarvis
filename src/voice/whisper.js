@@ -19,6 +19,8 @@ export function transcribeWithWhisper(audioPath, options) {
     modelPath,
     language = 'pt',
     timeoutMs = 120000,
+    prompt = null,
+    threads = 4,
   } = options;
 
   if (!fs.existsSync(audioPath)) {
@@ -29,16 +31,18 @@ export function transcribeWithWhisper(audioPath, options) {
   }
 
   return new Promise((resolve, reject) => {
-    // Argumentos comuns ao whisper.cpp moderno:
-    //   -m <modelo> -f <wav> -l <lang> -nt (sem timestamps)
-    // Algumas versões mais antigas usam "main" e não suportam -nt; mesmo
-    // assim, o parse abaixo tolera timestamps.
     const args = [
       '-m', modelPath,
       '-f', audioPath,
       '-l', language,
       '-nt',
+      '-t', String(threads),
     ];
+
+    // Prompt priming: enviesa vocabulário para o domínio do Jarvis
+    if (prompt) {
+      args.push('--prompt', prompt);
+    }
 
     const child = spawn(whisperPath, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -84,6 +88,11 @@ export function transcribeWithWhisper(audioPath, options) {
     });
   });
 }
+
+export const DEFAULT_WHISPER_PROMPT =
+  'Jarvis. Lista do Jira. Minhas tarefas. O que eu tenho hoje. ' +
+  'Status do projeto. Relatório da task. Mover task. Issues do Jira. ' +
+  'Fazer commit. Atualizar repositório.';
 
 /**
  * Extrai texto puro da saída do whisper.cpp.

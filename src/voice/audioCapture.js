@@ -24,11 +24,17 @@ export function getTempWavPath() {
 export function buildRecorderArgs({ type, audioDevice, outputPath }) {
   if (type === 'ffmpeg') {
     if (process.platform === 'win32') {
-      const device = audioDevice || 'default';
+      if (!audioDevice) {
+        throw new Error(
+          'Nenhum microfone configurado.\n' +
+          '  Rode: jarvis voz --listar-microfones\n' +
+          '  Depois: jarvis voz --config'
+        );
+      }
       return [
         '-y',
         '-f', 'dshow',
-        '-i', `audio=${device}`,
+        '-i', `audio=${audioDevice}`,
         '-ar', '16000',
         '-ac', '1',
         '-c:a', 'pcm_s16le',
@@ -46,7 +52,6 @@ export function buildRecorderArgs({ type, audioDevice, outputPath }) {
         outputPath,
       ];
     }
-    // Linux: tenta ALSA default
     return [
       '-y',
       '-f', 'alsa',
@@ -59,7 +64,6 @@ export function buildRecorderArgs({ type, audioDevice, outputPath }) {
   }
 
   if (type === 'sox') {
-    // sox -d -r 16000 -c 1 -b 16 output.wav
     return ['-d', '-r', '16000', '-c', '1', '-b', '16', outputPath];
   }
 
@@ -86,7 +90,14 @@ export function startRecording(options) {
   } = options;
 
   const outputPath = getTempWavPath();
-  const args = buildRecorderArgs({ type, audioDevice, outputPath });
+
+  let args;
+  try {
+    args = buildRecorderArgs({ type, audioDevice, outputPath });
+  } catch (err) {
+    // Repassa o erro em promise rejeitada para quem chamou
+    return Promise.reject(err);
+  }
 
   const child = spawn(recorderPath, args, {
     stdio: ['ignore', 'ignore', 'pipe'],
@@ -101,13 +112,13 @@ export function startRecording(options) {
   let timeoutHandle = null;
   let stopped = false;
   let reason = 'manual';
+  let stopFn = null;
 
   const promise = new Promise((resolve, reject) => {
     const stop = () => {
       if (stopped) return;
       stopped = true;
       if (timeoutHandle) clearTimeout(timeoutHandle);
-      // Envia sinal de encerramento — ffmpeg interpreta como fim gracioso
       try { child.kill('SIGINT'); } catch { /* ignore */ }
     };
 
@@ -115,6 +126,9 @@ export function startRecording(options) {
       reason = r;
       stop();
     };
+
+    // Guarda a referência para ser usada FORA do executor
+    stopFn = stopWithReason;
 
     timeoutHandle = setTimeout(() => stopWithReason('timeout'), maxDurationMs);
 
@@ -137,10 +151,12 @@ export function startRecording(options) {
 
       resolve({ outputPath, stopped: true, reason });
     });
-
-    // Expõe o stop para o chamador
-    promise.stop = stopWithReason;
   });
+
+  // Anexa o stop DEPOIS que o promise existe (corrige o bug)
+  promise.stop = (r) => {
+    if (stopFn) stopFn(r || 'manual');
+  };
 
   return promise;
 }

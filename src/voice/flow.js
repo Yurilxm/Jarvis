@@ -5,8 +5,8 @@ import {
   checkVoiceDependencies,
   listAudioDevices,
 } from './dependencies.js';
-import { startRecording } from './audioCapture.js';
-import { transcribeWithWhisper } from './whisper.js';
+import { startRecording, startAudioStream } from './audioCapture.js';
+import { transcribeWithWhisper, DEFAULT_WHISPER_PROMPT } from './whisper.js';
 import {
   updateVoiceConfig,
   readVoiceConfig,
@@ -27,7 +27,6 @@ import {
   muted,
 } from '../ui.js';
 import { runVoiceSetup } from './setup.js';
-import { startAudioStream } from './audioCapture.js';
 import { createWakeWordDetector, frameSplitter } from './wakeword.js';
 import { writeWavFile, rmsLevel } from './wav.js';
 import path from 'node:path';
@@ -44,11 +43,30 @@ function confidenceLabel(confidence) {
 }
 
 /**
- * Processa um texto: faz o match, mostra o resultado e (se solicitado)
- * executa o comando.
- *
- * @param {string} text
- * @param {{ run?: boolean, interactive?: boolean }} [opts]
+ * Executa o comando casado pelo intent matcher.
+ */
+async function executeIntent(result) {
+  const argvStr = result.argv.join(' ');
+  blank();
+  info(`Executando: jarvis ${argvStr}`);
+  blank();
+
+  try {
+    const ok = await dispatchIntent(result.argv);
+    if (ok === 'help') {
+      const { printCatalogBoxes } = await import('../commands/menu.js');
+      printCatalogBoxes();
+    } else if (!ok) {
+      warn(`Comando '${argvStr}' ainda não é suportado no modo voz.`);
+      dim('  (os comandos suportados estão listados no topo do dispatch.js)');
+    }
+  } catch (err) {
+    error(`Erro ao executar: ${err.message}`);
+  }
+}
+
+/**
+ * Mostra o resultado do match e executa (padrão) ou pergunta (--confirm).
  */
 async function handleText(text, opts = {}) {
   const result = matchIntent(text);
@@ -77,53 +95,24 @@ async function handleText(text, opts = {}) {
   );
   blank();
 
-  if (opts.run) {
-    info(`Executando: jarvis ${argvStr}`);
-    blank();
-    try {
-      const ok = await dispatchIntent(result.argv);
-      if (ok === 'help') {
-        const { printCatalogBoxes } = await import('../commands/menu.js');
-        printCatalogBoxes();
-      } else if (!ok) {
-        warn(`Comando '${argvStr}' ainda não é suportado no modo voz.`);
-        dim('  (os comandos suportados nesta fase estão listados no topo do dispatch.js)');
-      }
-    } catch (err) {
-      error(`Erro ao executar: ${err.message}`);
-    }
-    return;
-  }
-
-  if (opts.interactive) {
+  // Padrão: executa. --confirm: pergunta.
+  if (opts.confirm) {
     const shouldRun = await confirm({
       message: 'Executar este comando?',
-      default: false,
+      default: true,
     });
 
     if (!shouldRun) {
       dim('Não executado.');
       return;
     }
-
-    blank();
-    info(`Executando: jarvis ${argvStr}`);
-    blank();
-    try {
-      const ok = await dispatchIntent(result.argv);
-      if (ok === 'help') {
-        const { printCatalogBoxes } = await import('../commands/menu.js');
-        printCatalogBoxes();
-      } else if (!ok) {
-        warn(`Comando '${argvStr}' ainda não é suportado no modo voz.`);
-      }
-    } catch (err) {
-      error(`Erro ao executar: ${err.message}`);
-    }
+  } else if (!opts.execute) {
+    // Modo simulação pura (sem --run, sem --ouvir, sem --wake)
+    dim('  (modo simulação — use --run para executar o comando de verdade)');
     return;
   }
 
-  dim('  (modo simulação — use --run para executar o comando de verdade)');
+  await executeIntent(result);
 }
 
 /**
@@ -167,14 +156,6 @@ function printMissingDependencies(deps) {
 
 /**
  * Grava uma "frase de comando" após a wake word ser detectada.
- * Para quando:
- *  - passou `maxDurationMs` (padrão 8s), ou
- *  - detectou silêncio por `silenceMs` (padrão 1.5s) após ter havido som.
- *
- * @param {NodeJS.ReadableStream} stream
- * @param {number} sampleRate
- * @param {{ maxDurationMs?: number, silenceMs?: number, minVoiceMs?: number }} [opts]
- * @returns {Promise<string>} caminho do WAV salvo
  */
 function captureCommandPhrase(stream, sampleRate, opts = {}) {
   const maxDurationMs = opts.maxDurationMs ?? 8000;
@@ -187,7 +168,7 @@ function captureCommandPhrase(stream, sampleRate, opts = {}) {
     let lastVoiceAt = null;
     let totalVoiceMs = 0;
 
-    const frameMs = 100; // janela RMS
+    const frameMs = 100;
     const bytesPerWindow = Math.floor(sampleRate * 2 * (frameMs / 1000));
     let carry = Buffer.alloc(0);
 
@@ -249,7 +230,7 @@ function captureCommandPhrase(stream, sampleRate, opts = {}) {
 
 /**
  * Modo --wake: escuta continuamente, aguarda a wake word e então grava
- * uma frase, transcreve e roteia.
+ * uma frase, transcreve e executa.
  */
 async function runWakeMode(opts = {}) {
   const deps = checkVoiceDependencies();
@@ -308,7 +289,7 @@ async function runWakeMode(opts = {}) {
       try {
         keywordIndex = wake.handle.process(frame);
       } catch {
-        // ignora frames com erro (não deveria acontecer)
+        // ignora frames com erro
       }
 
       if (keywordIndex >= 0) {
@@ -318,7 +299,6 @@ async function runWakeMode(opts = {}) {
         dim('  Fale agora...');
 
         try {
-          // Pausa processamento; deixa o stream seguir alimentando o buffer
           const wavPath = await captureCommandPhrase(stream, wake.sampleRate, {
             maxDurationMs: cfg.commandMaxMs ?? 8000,
             silenceMs: cfg.commandSilenceMs ?? 1500,
@@ -334,6 +314,8 @@ async function runWakeMode(opts = {}) {
               whisperPath: deps.whisper.path,
               modelPath: deps.model.path,
               language: cfg.language || 'pt',
+              prompt: cfg.whisperPrompt || DEFAULT_WHISPER_PROMPT,
+              threads: cfg.whisperThreads || 4,
             });
             text = res.text;
             transSpin.succeed('Transcrição concluída.');
@@ -358,7 +340,10 @@ async function runWakeMode(opts = {}) {
             fs.unlinkSync(wavPath);
           } catch { /* ignore */ }
 
-          await handleText(text, { run: opts.run ?? true, interactive: !opts.run });
+          await handleText(text, {
+            execute: !opts.confirm,
+            confirm: opts.confirm,
+          });
         } catch (err) {
           error(`Erro ao capturar comando: ${err.message}`);
         }
@@ -369,7 +354,6 @@ async function runWakeMode(opts = {}) {
     }
   });
 
-  // Espera até SIGINT ou até o processo morrer
   await new Promise((resolve) => {
     const check = setInterval(() => {
       if (!running) {
@@ -391,7 +375,7 @@ async function runWakeMode(opts = {}) {
 }
 
 /**
- * Modo --ouvir: push-to-talk.
+ * Modo --ouvir: push-to-talk com auto-stop.
  */
 async function runListenMode(opts = {}) {
   const deps = checkVoiceDependencies();
@@ -404,61 +388,55 @@ async function runListenMode(opts = {}) {
   printBox(
     `${chalk.bold('Gravador')}    ${deps.recorder.type} (${deps.recorder.path})\n` +
     `${chalk.bold('whisper')}     ${deps.whisper.path}\n` +
-    `${chalk.bold('Modelo')}      ${require('node:path').basename(deps.model.path)}\n` +
-    `${chalk.bold('Microfone')}   ${deps.audioDevice || muted('default do sistema')}`,
+    `${chalk.bold('Modelo')}      ${path.basename(deps.model.path)}\n` +
+    `${chalk.bold('Microfone')}   ${deps.audioDevice || muted('default do sistema')}\n` +
+    `${chalk.bold('Modo')}        ${chalk.green('auto-stop por silêncio (~1.2s)')}`,
     { title: 'captura de voz', borderColor: 'green' }
   );
   blank();
 
-  info('Pressione Enter para começar a gravar.');
+  info('Pressione Enter para começar a gravar. Fale e ele para sozinho.');
   await input({ message: 'Pronto?' });
+  blank();
 
-  const recordSpinner = spinner('Gravando... pressione Enter para parar.');
+  const recordSpinner = spinner('Ouvindo... fale agora.');
   recordSpinner.start();
 
-  let recording;
+  let wavPath;
+  let streamControl;
   try {
-    recording = startRecording({
+    streamControl = startAudioStream({
       recorderPath: deps.recorder.path,
       type: deps.recorder.type,
       audioDevice: deps.audioDevice,
-      maxDurationMs: 30000,
     });
-  } catch (err) {
-    recordSpinner.fail('Falha ao iniciar gravação');
-    error(err.message);
-    return;
-  }
 
-  // Espera o usuário apertar Enter (ou timeout de 30s)
-  await input({ message: '' }).catch(() => { /* Ctrl+C */ });
-  recording.stop('manual');
+    wavPath = await captureCommandPhrase(streamControl.stream, 16000, {
+      maxDurationMs: readVoiceConfig().commandMaxMs ?? 8000,
+      silenceMs: readVoiceConfig().commandSilenceMs ?? 1200,
+      minVoiceMs: 300,
+    });
 
-  let audioPath;
-  try {
-    const res = await recording;
-    audioPath = res.outputPath;
-    if (res.reason === 'timeout') {
-      recordSpinner.succeed('Gravação encerrada (limite de 30s).');
-    } else {
-      recordSpinner.succeed('Gravação encerrada.');
-    }
+    try { streamControl.stop(); } catch { /* ignore */ }
+
+    recordSpinner.succeed('Gravação encerrada.');
   } catch (err) {
     recordSpinner.fail('Erro na gravação');
     error(err.message);
     return;
   }
 
-  // Transcreve
   const transSpin = spinner('Transcrevendo com whisper.cpp...');
   transSpin.start();
 
   let transcription;
   try {
-    const res = await transcribeWithWhisper(audioPath, {
+    const res = await transcribeWithWhisper(wavPath, {
       whisperPath: deps.whisper.path,
       modelPath: deps.model.path,
       language: readVoiceConfig().language || 'pt',
+      prompt: readVoiceConfig().whisperPrompt || DEFAULT_WHISPER_PROMPT,
+      threads: readVoiceConfig().whisperThreads || 4,
     });
     transcription = res.text;
     transSpin.succeed('Transcrição concluída.');
@@ -478,8 +456,8 @@ async function runListenMode(opts = {}) {
   blank();
 
   await handleText(transcription, {
-    run: opts.run,
-    interactive: !opts.run,
+    execute: !opts.confirm,
+    confirm: opts.confirm,
   });
 }
 
@@ -490,14 +468,13 @@ async function runListenMode(opts = {}) {
  *   jarvis voz                                → modo simulação interativo
  *   jarvis voz "frase"                        → simula a frase
  *   jarvis voz "frase" --run                  → simula e executa
- *   jarvis voz --ouvir                        → grava + transcreve + sugere
- *   jarvis voz --ouvir --run                  → grava + transcreve + executa
+ *   jarvis voz --ouvir                        → grava + transcreve + EXECUTA
+ *   jarvis voz --ouvir --confirm              → grava + transcreve + pergunta
+ *   jarvis voz --wake                         → escuta contínua (executa)
+ *   jarvis voz --wake --confirm               → escuta contínua (pergunta)
  *   jarvis voz ajuda                          → lista intents
  *   jarvis voz --listar-microfones            → lista microfones (Windows)
  *   jarvis voz --config                       → configurar caminhos manualmente
- *
- * @param {string} [initialText]
- * @param {{ run?: boolean, listen?: boolean, listMics?: boolean, config?: boolean }} [opts]
  */
 export async function runVoice(initialText, opts = {}) {
   printBanner();
@@ -508,11 +485,10 @@ export async function runVoice(initialText, opts = {}) {
   }
 
   if (opts.wake) {
-    await runWakeMode({ run: opts.run });
+    await runWakeMode({ confirm: opts.confirm });
     return;
   }
 
-  // --listar-microfones
   if (opts.listMics) {
     const deps = checkVoiceDependencies();
     if (!deps.recorder.ok) {
@@ -535,7 +511,6 @@ export async function runVoice(initialText, opts = {}) {
     return;
   }
 
-  // --config
   if (opts.config) {
     const cfg = readVoiceConfig();
     blank();
@@ -576,14 +551,13 @@ export async function runVoice(initialText, opts = {}) {
     return;
   }
 
-  // --ouvir
   if (opts.listen) {
-    await runListenMode({ run: opts.run });
+    await runListenMode({ confirm: opts.confirm });
     return;
   }
 
-  // Modo simulação (fase 3a)
-  info('Jarvis Voz — modo simulação (fase 3a)');
+  // Modo simulação
+  info('Jarvis Voz — modo simulação');
   dim('  Para captura real de voz, use: jarvis voz --ouvir');
   dim('  Comandos reconhecidos: use "jarvis voz ajuda".');
   blank();
@@ -607,7 +581,10 @@ export async function runVoice(initialText, opts = {}) {
         return;
       }
 
-      await handleText(trimmed, { ...opts, interactive: true });
+      await handleText(trimmed, {
+        execute: opts.run,
+        confirm: opts.confirm,
+      });
       blank();
     }
   }
@@ -627,5 +604,8 @@ export async function runVoice(initialText, opts = {}) {
     return;
   }
 
-  await handleText(trimmed, opts);
+  await handleText(trimmed, {
+    execute: opts.run,
+    confirm: opts.confirm,
+  });
 }

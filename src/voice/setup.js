@@ -65,23 +65,35 @@ export function pickWhisperAsset(assets, env = {}) {
 
   if (platform === 'linux') return null;
 
-  const candidates = [];
+  // Filtra apenas assets que pareçam binários pré-compilados (têm "bin" e ".zip").
+  // Ignora "source code" (que o GitHub sempre inclui).
+  const zips = assets.filter(
+    (a) => /\.zip$/i.test(a.name) && /bin/i.test(a.name)
+  );
+
+  if (zips.length === 0) return null;
+
+  // Prioridade por arquitetura
+  const patterns = [];
   if (platform === 'win32') {
     if (arch === 'x64') {
-      candidates.push(/whisper-bin-x64\.zip$/i);
-      candidates.push(/whisper-blas-bin-x64\.zip$/i);
+      patterns.push(/whisper-bin-x64/i);
+      patterns.push(/whisper-blas-bin-x64/i);
+      patterns.push(/whisper.*x64.*\.zip$/i);
     } else if (arch === 'arm64') {
-      candidates.push(/whisper-bin-arm64\.zip$/i);
+      patterns.push(/whisper-bin-arm64/i);
+      patterns.push(/whisper.*arm64.*\.zip$/i);
     }
-    candidates.push(/whisper-bin.*\.zip$/i);
+    patterns.push(/whisper.*bin.*\.zip$/i);
   } else if (platform === 'darwin') {
-    candidates.push(/whisper-bin.*\.zip$/i);
+    patterns.push(/whisper.*bin.*\.zip$/i);
   }
 
-  for (const re of candidates) {
-    const found = assets.find((a) => re.test(a.name));
+  for (const re of patterns) {
+    const found = zips.find((a) => re.test(a.name));
     if (found) return found;
   }
+
   return null;
 }
 

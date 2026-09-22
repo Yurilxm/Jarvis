@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readVoiceConfig } from './config.js';
+import { readVoiceConfig, updateVoiceConfig } from './config.js';
 
 /**
  * Procura um executável no PATH.
@@ -76,8 +76,8 @@ export function detectWhisper() {
     return { ok: true, path: cfg.whisperPath };
   }
 
-  // 2. Candidatos conhecidos no PATH
-  const candidates = ['whisper-cli', 'whisper', 'main'];
+  // 2. Candidatos no PATH — só nomes específicos (evita main.cpl do Windows)
+  const candidates = ['whisper-cli', 'whisper'];
   for (const name of candidates) {
     const found = findInPath(name);
     if (found) return { ok: true, path: found };
@@ -86,15 +86,36 @@ export function detectWhisper() {
   // 3. Locais comuns (Windows)
   if (process.platform === 'win32') {
     const home = os.homedir();
-    const guesses = [
-      path.join(home, 'whisper.cpp', 'main.exe'),
-      path.join(home, 'whisper.cpp', 'build', 'bin', 'Release', 'main.exe'),
-      path.join(home, 'whisper.cpp', 'build', 'bin', 'main.exe'),
-      'C:\\whisper.cpp\\main.exe',
-      'C:\\whisper.cpp\\build\\bin\\Release\\main.exe',
+    const whisperRoot = path.join(home, 'whisper.cpp');
+
+    // Todos os nomes possíveis do executável (a versão nova do whisper.cpp
+    // renomeou "main.exe" para "whisper-cli.exe")
+    const executableNames = ['whisper-cli.exe', 'main.exe'];
+
+    // Todos os subdiretórios possíveis
+    const subdirs = [
+      '',                     // raiz (whisper.cpp\main.exe)
+      'Release',              // whisper.cpp\Release\main.exe
+      'bin',                  // whisper.cpp\bin\main.exe
+      'build',
+      path.join('build', 'bin'),
+      path.join('build', 'bin', 'Release'),
+      path.join('build', 'bin', 'Debug'),
     ];
-    for (const g of guesses) {
-      if (fs.existsSync(g)) return { ok: true, path: g };
+
+    for (const sub of subdirs) {
+      for (const exe of executableNames) {
+        const p = path.join(whisperRoot, sub, exe);
+        if (fs.existsSync(p)) return { ok: true, path: p };
+      }
+    }
+
+    // Fallbacks em C:\whisper.cpp\
+    for (const sub of subdirs) {
+      for (const exe of executableNames) {
+        const p = path.join('C:\\whisper.cpp', sub, exe);
+        if (fs.existsSync(p)) return { ok: true, path: p };
+      }
     }
   }
 
@@ -190,16 +211,27 @@ export function listAudioDevices(ffmpegPath) {
   try {
     const res = spawnSync(
       ffmpegPath,
-      ['-list_devices', 'true', '-f', 'dshow', '-i', 'dummy'],
-      { encoding: 'utf-8', timeout: 10000 }
+      ['-hide_banner', '-list_devices', 'true', '-f', 'dshow', '-i', 'dummy'],
+      { encoding: 'utf-8', timeout: 15000 }
     );
 
     const output = `${res.stdout || ''}\n${res.stderr || ''}`;
+
+    // O ffmpeg imprime algo como:
+    //   [in#0 @ 0x...] "Microfone (3- USB Audio Device)" (audio)
+    //   [in#0 @ 0x...]   Alternative name
+    //   "@device_cm_{...}\wave_{...}"
+    //
+    // Regex: qualquer coisa entre aspas seguida de "(audio)".
+    // A linha do "Alternative name" não casa porque não tem "(audio)" depois.
     const devices = [];
-    const re = /\[dshow[^\]]*\]\s+"([^"]+)"\s+\(audio\)/g;
+    const re = /"([^"]+)"\s*\(audio\)/gi;
     let m;
     while ((m = re.exec(output)) !== null) {
-      devices.push(m[1]);
+      const name = m[1].trim();
+      if (name && !devices.includes(name)) {
+        devices.push(name);
+      }
     }
     return devices;
   } catch {
@@ -225,12 +257,17 @@ export function checkVoiceDependencies() {
 
   let audioDevice = null;
   const cfg = readVoiceConfig();
+
   if (cfg.audioDevice) {
+    // Usuário configurou explicitamente
     audioDevice = cfg.audioDevice;
-  } else if (recorder.ok && recorder.type === 'ffmpeg') {
+  } else if (recorder.ok && recorder.type === 'ffmpeg' && process.platform === 'win32') {
+    // Auto-detecta e salva na config (só na primeira vez)
     const devices = listAudioDevices(recorder.path);
     if (devices && devices.length > 0) {
       audioDevice = devices[0];
+      // Persiste para as próximas execuções não precisarem listar de novo
+      updateVoiceConfig({ audioDevice });
     }
   }
 
@@ -238,6 +275,9 @@ export function checkVoiceDependencies() {
   if (!recorder.ok) missing.push('recorder');
   if (!whisper.ok) missing.push('whisper');
   if (!model.ok) missing.push('model');
+  if (process.platform === 'win32' && recorder.ok && !audioDevice) {
+    missing.push('audioDevice');
+  }
 
   return {
     recorder,

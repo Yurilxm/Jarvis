@@ -20,16 +20,17 @@ describe('voice — buildRecorderArgs', () => {
     }
   });
 
-  it('ffmpeg no Windows usa "default" quando dispositivo não é informado', () => {
+  it('ffmpeg no Windows lança erro quando dispositivo não é informado', () => {
     const original = process.platform;
     Object.defineProperty(process, 'platform', { value: 'win32' });
     try {
-      const args = buildRecorderArgs({
-        type: 'ffmpeg',
-        audioDevice: null,
-        outputPath: 'out.wav',
-      });
-      expect(args.join(' ')).toContain('audio=default');
+      expect(() =>
+        buildRecorderArgs({
+          type: 'ffmpeg',
+          audioDevice: null,
+          outputPath: 'out.wav',
+        })
+      ).toThrow(/Nenhum microfone configurado/);
     } finally {
       Object.defineProperty(process, 'platform', { value: original });
     }
