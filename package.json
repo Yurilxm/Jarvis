@@ -29,6 +29,11 @@
     "octokit": "^5.0.5",
     "ora": "^9.4.1"
   },
+  "optionalDependencies": {
+    "@picovoice/porcupine-node": "^3.0.0",
+    "clipboardy": "^4.0.0",
+    "tesseract.js": "^5.1.0"
+  },
   "devDependencies": {
     "@secretlint/secretlint-rule-preset-recommend": "^13.0.4",
     "jest": "^30.4.2",

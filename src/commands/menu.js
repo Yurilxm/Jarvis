@@ -49,6 +49,7 @@ export const COMMAND_CATALOG = [
   { id: 'jira-create', section: 'jira', label: 'jarvis jira create', description: 'Cria nova task (IA opcional).', keywords: ['task'], argv: ['jira', 'create'] },
   { id: 'jira-edit', section: 'jira', label: 'jarvis jira edit', description: 'Edita título, descrição ou responsável de uma issue.', keywords: ['editar', 'update'], argv: ['jira', 'edit'], needsArg: { message: 'Chave da issue (ex: SDG-71):', validate: (v) => (v.trim() ? true : 'Informe a chave') } },
   { id: 'jira-delete', section: 'jira', label: 'jarvis jira delete', description: 'Exclui uma issue permanentemente.', keywords: ['excluir', 'remover'], argv: ['jira', 'delete'], needsArg: { message: 'Chave da issue (ex: SDG-71):', validate: (v) => (v.trim() ? true : 'Informe a chave') } },
+  { id: 'jira-report', section: 'jira', label: 'jarvis report', description: 'Gera relatório de uma issue (Jira + commits).', keywords: ['relatorio', 'report', 'issue'], argv: ['report'], needsArg: { message: 'Chave da issue (ex: SDG-71):', validate: (v) => (v.trim() ? true : 'Informe a chave') } },
 
   { id: 'profile-setup', section: 'perfil', label: 'jarvis profile setup', description: 'Configura perfil do desenvolvedor.', keywords: ['usuario'], argv: ['profile', 'setup'] },
   { id: 'profile-show', section: 'perfil', label: 'jarvis profile show', description: 'Mostra perfil atual.', keywords: ['usuario'], argv: ['profile', 'show'] },
@@ -56,6 +57,9 @@ export const COMMAND_CATALOG = [
 
   { id: 'ignore', section: 'outros', label: 'jarvis ignore', description: 'Gerencia lista de ignore.', keywords: ['segredos'], argv: ['ignore'] },
   { id: 'history', section: 'outros', label: 'jarvis history', description: 'Histórico de commits/pushes do Jarvis.', keywords: ['timeline'], argv: ['history'] },
+  { id: 'history-sync', section: 'outros', label: 'jarvis history sync', description: 'Sincroniza commits manuais para o histórico do Jarvis.', keywords: ['sincronizar', 'manual', 'git'], argv: ['history', 'sync'] },
+  { id: 'transcrever', section: 'outros', label: 'jarvis transcrever', description: 'Extrai texto de uma imagem via OCR local.', keywords: ['ocr', 'imagem', 'texto', 'transcrever'], argv: ['transcrever'], needsArg: { message: 'Caminho da imagem:', validate: (v) => (v.trim() ? true : 'Informe o caminho') } },
+  { id: 'voz', section: 'outros', label: 'jarvis voz', description: 'Simula reconhecimento de voz com uma frase digitada.', keywords: ['voice', 'fala', 'audio'], argv: ['voz'], needsArg: { message: 'Frase para simular (ex: lista do jira):', validate: (v) => (v.trim() ? true : 'Informe uma frase') } },
 ];
 
 /** Textos curtos para as caixas / hints. */
@@ -97,11 +101,15 @@ const SUMMARIES = {
   'jira-create': 'Cria nova task (com IA opcional)',
   'jira-edit': 'Edita título, descrição ou responsável de uma issue',
   'jira-delete': 'Exclui uma issue permanentemente',
+  'jira-report': 'Gera relatório de uma issue (Jira + commits)',
   'profile-setup': 'Configura perfil do desenvolvedor',
   'profile-show': 'Mostra perfil atual',
   'profile-edit': 'Edita perfil manualmente',
   ignore: 'Gerencia lista de ignore (IA + manual)',
   history: 'Histórico de commits/pushes do Jarvis',
+  'history-sync': 'Sincroniza commits manuais para o histórico',
+  transcrever: 'Extrai texto de uma imagem via OCR local',
+  voz: 'Simula reconhecimento de voz (fase 3a)',
 };
 
 const DISPLAY_LABELS = {
@@ -120,8 +128,12 @@ const DISPLAY_LABELS = {
   'jira-move': 'jarvis jira move <issue>',
   'jira-edit': 'jarvis jira edit <issue>',
   'jira-delete': 'jarvis jira delete <issue>',
+  'jira-report': 'jarvis report <issue>',
   scan: 'jarvis scan [profundidade]',
   add: 'jarvis add [caminho]',
+  transcrever: 'jarvis transcrever <imagem>',
+  voz: 'jarvis voz "frase"',
+  'history-sync': 'jarvis history sync',
 };
 
 function normalize(text) {

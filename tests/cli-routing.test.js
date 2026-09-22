@@ -20,7 +20,7 @@ describe('cli routing', () => {
 
   it('cobre todos os aliases documentados', () => {
     expect(Object.keys(ALIASES).sort()).toEqual(
-      ['a', 'b', 'c', 'd', 'h', 'i', 'j', 'm', 'p', 'r', 's', 't', 'u', 'w'].sort()
+      ['a', 'b', 'c', 'd', 'h', 'i', 'j', 'm', 'p', 'r', 's', 't', 'tr', 'u', 'w'].sort()
     );
   });
 

@@ -40,21 +40,33 @@ function shortHash(entry) {
   return entry.hash ? entry.hash.slice(0, 7) : '-------';
 }
 
+function sourceBadge(entry) {
+  const src = entry.source || 'jarvis';
+  if (src === 'git') return chalk.magenta('git ');
+  return chalk.green('jarvis');
+}
+
+function pushBadge(entry) {
+  return entry.pushed ? chalk.green('▲ push') : muted('· local');
+}
+
 /**
  * Lista visual do histórico Jarvis.
- * @param {{ limit?: number, pushedOnly?: boolean }} [options]
+ * @param {{ limit?: number, pushedOnly?: boolean, source?: string }} [options]
  */
 export async function runHistoryView(options = {}) {
   printBanner();
 
   const limit = options.limit ?? 30;
   const pushedOnly = Boolean(options.pushedOnly);
-  const entries = readHistory({ limit, pushedOnly });
+  const source = options.source || null;
+  const entries = readHistory({ limit, pushedOnly, source });
 
   if (entries.length === 0) {
     printBox(
       `${muted('Nenhum evento ainda.')}\n` +
-      `${muted('O histórico é preenchido quando você usa')} ${chalk.green('jarvis commit')}.`,
+      `${muted('O histórico é preenchido quando você usa')} ${chalk.green('jarvis commit')}\n` +
+      `${muted('ou sincronizado com commits manuais via')} ${chalk.green('jarvis history sync')}.`,
       { title: 'histórico' }
     );
     return;
@@ -63,12 +75,14 @@ export async function runHistoryView(options = {}) {
   const summary = entries
     .map((e, i) => {
       const n = String(i + 1).padStart(2, '0');
-      const flag = e.pushed ? chalk.green('▲ push') : muted('· local');
+      const src = sourceBadge(e);
+      const flag = pushBadge(e);
       const hash = chalk.cyan(shortHash(e));
       const branch = chalk.yellow(e.branch || '?');
       const when = muted(formatWhen(e.at));
       const title = e.title || '(sem título)';
-      return `${accent(n)}  ${hash}  ${flag}  ${branch}  ${when}\n    ${title}`;
+      const repo = e.repo ? muted(`  [${e.repo}]`) : '';
+      return `${accent(n)}  ${hash}  ${src}  ${flag}  ${branch}  ${when}${repo}\n    ${title}`;
     })
     .join('\n\n');
 
@@ -77,7 +91,7 @@ export async function runHistoryView(options = {}) {
   const choice = await select({
     message: 'Ver detalhes?',
     choices: [
-      ...entries.slice(0, 15).map((e, i) => ({
+      ...entries.slice(0, 15).map((e) => ({
         name: `${shortHash(e)} — ${e.title || '(sem título)'}`,
         value: e.id,
       })),
@@ -114,8 +128,13 @@ export function showEntryDetail(entry) {
     ? `\n${muted('Corpo')}\n${entry.body}`
     : '';
 
+  const src = (entry.source || 'jarvis') === 'git'
+    ? chalk.magenta('git (commit manual)')
+    : chalk.green('jarvis');
+
   printBox(
     `${chalk.bold('Quando')}   ${formatWhen(entry.at)}\n` +
+    `${chalk.bold('Origem')}   ${src}\n` +
     `${chalk.bold('Branch')}   ${chalk.yellow(entry.branch || '?')}\n` +
     `${chalk.bold('Hash')}     ${chalk.cyan(entry.hash || '—')}\n` +
     `${chalk.bold('Push')}     ${pushLine}\n` +
@@ -130,7 +149,6 @@ export function showEntryDetail(entry) {
 
 /**
  * Atalho: mostra os últimos commits do git com marcação se estão no histórico Jarvis.
- * (opcional no menu — usado se quiser misturar views)
  */
 export function peekGitLog(limit = 10) {
   if (!isGitRepo()) {

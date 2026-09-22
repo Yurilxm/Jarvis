@@ -26,7 +26,7 @@ import {
   chalk,
   accent,
 } from '../ui.js';
-import { filterInternalPaths, shouldSuggestJarvisRelease } from './helpers.js';
+import { filterInternalPaths, shouldSuggestJarvisRelease, detectJiraIssueKey } from './helpers.js';
 
 /**
  * Fluxo completo do assistente de commit.
@@ -320,6 +320,7 @@ export async function runCommitFlow() {
 
   const historyEntry = {
     action: 'commit',
+    source: 'jarvis',
     branch: currentBranchAfterCommit,
     hash: commitHash,
     title,
@@ -328,6 +329,7 @@ export async function runCommitFlow() {
     fileCount: selectedSafe.length,
     pushed: false,
     pushedAt: null,
+    jiraIssue: detectJiraIssueKey(currentBranchAfterCommit),
   };
 
   const shouldPush = await confirm({

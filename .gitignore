@@ -14,3 +14,7 @@ npm-debug.log*
 # Sistema operacional
 Thumbs.db
 .DS_Store
+
+# Jarvis — gerado automaticamente
+transcricoes/
+reports/

@@ -37,6 +37,7 @@ export function appendHistory(event, cwd = process.cwd()) {
     id: event.id || randomUUID(),
     at: event.at || new Date().toISOString(),
     action: event.action || 'commit',
+    source: event.source || 'jarvis',
     repo: event.repo || path.basename(cwd),
     cwd: event.cwd || cwd,
     branch: event.branch || null,
@@ -47,6 +48,7 @@ export function appendHistory(event, cwd = process.cwd()) {
     fileCount: event.fileCount ?? (event.files?.length || 0),
     pushed: Boolean(event.pushed),
     pushedAt: event.pushedAt || null,
+    jiraIssue: event.jiraIssue || null,
   };
 
   fs.appendFileSync(getHistoryPath(cwd), `${JSON.stringify(entry)}\n`, 'utf-8');
@@ -55,10 +57,10 @@ export function appendHistory(event, cwd = process.cwd()) {
 
 /**
  * Lê o histórico (mais recente primeiro).
- * @param {{ limit?: number, pushedOnly?: boolean, cwd?: string }} [options]
+ * @param {{ limit?: number, pushedOnly?: boolean, cwd?: string, jiraIssue?: string, source?: string }} [options]
  * @returns {object[]}
  */
-export function readHistory({ limit = 50, pushedOnly = false, cwd = process.cwd() } = {}) {
+export function readHistory({ limit = 50, pushedOnly = false, cwd = process.cwd(), jiraIssue = null, source = null } = {}) {
   const filePath = getHistoryPath(cwd);
   if (!fs.existsSync(filePath)) {
     return [];
@@ -81,6 +83,12 @@ export function readHistory({ limit = 50, pushedOnly = false, cwd = process.cwd(
   let list = entries.reverse();
   if (pushedOnly) {
     list = list.filter((e) => e.pushed);
+  }
+  if (jiraIssue) {
+    list = list.filter((e) => e.jiraIssue === jiraIssue);
+  }
+  if (source) {
+    list = list.filter((e) => (e.source || 'jarvis') === source);
   }
 
   return list.slice(0, limit);

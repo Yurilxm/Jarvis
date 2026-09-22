@@ -16,6 +16,7 @@ export const ALIASES = {
   t: 'today',
   a: 'analyze',
   w: 'scan',
+  tr: 'transcrever'
 };
 
 /**

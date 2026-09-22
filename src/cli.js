@@ -19,7 +19,7 @@ import { runReviewFlow } from './review/flow.js';
 import { runDocsFlow } from './docs/flow.js';
 import { handleJiraCommand } from './jira/handler.js';
 import { getProtectedBranch } from './config/branches.js';
-import { showLoading, warn, printBanner, printBox, muted, chalk, dim, blank } from './ui.js';
+import { showLoading, warn, printBanner, printBox, muted, chalk, dim, blank, spinner, info } from './ui.js';
 import { runAnalyze } from './commands/analyze.js';
 import { runUX } from './commands/ux.js';
 import { runCheck } from './commands/check.js';
@@ -30,6 +30,11 @@ import { runShellSetup } from './commands/shell-setup.js';
 import { runInteractiveMenu } from './commands/menu.js';
 import { resolveCommand } from './cli-routing.js';
 import { getLaunchMode } from './config/preferences.js';
+import { runReport } from './report/flow.js';
+import { runTranscribe } from './transcribe/flow.js';
+import { runVoice } from './voice/flow.js';
+import { syncHistoryFromGit } from './history/sync.js';
+import path from 'node:path';
 
 let command = process.argv[2];
 let subcommand = process.argv[3];
@@ -71,14 +76,53 @@ async function bootstrap() {
     arg = picked.argv[2];
     command = resolveCommand(command);
   }
+  // Sincroniza silenciosamente commits manuais (feitos fora do Jarvis)
+  // Ignora quando o comando é 'history' (o próprio comando faz o sync e mostra o resultado)
+  if (command !== 'history' && !process.argv.includes('--no-sync')) {
+    try {
+      const result = syncHistoryFromGit({ limit: 50 });
+      if (result.added > 0) {
+        const repo = result.repo ? path.basename(result.repo) : '';
+        info(`ℹ ${result.added} commit(s) manual(is) adicionado(s) ao histórico${repo ? ` [${repo}]` : ''}.`);
+      }
+    } catch {
+      // silencioso — sync não deve quebrar nenhum comando
+    }
+  }
 
   await main();
 }
+
 
 async function main() {
   if (command === 'init') await runInitFlow();
   else if (command === 'ignore') await runIgnoreMenu();
   else if (command === 'history') {
+    // jarvis history sync [--dry-run]
+    if (subcommand === 'sync') {
+      const dryRun = arg === '--dry-run' || process.argv.includes('--dry-run');
+      const spin = spinner(dryRun ? 'Verificando commits manuais...' : 'Sincronizando histórico...');
+      spin.start();
+      const result = syncHistoryFromGit({ limit: 100, dryRun });
+      if (result.scanned === 0) {
+        spin.succeed('Sem commits para sincronizar.');
+        return;
+      }
+      if (result.added === 0) {
+        spin.succeed(`${result.scanned} commit(s) verificados — nada novo.`);
+        return;
+      }
+      spin.succeed(`${result.added} commit(s) ${dryRun ? 'seriam adicionados' : 'adicionado(s)'}.`);
+      blank();
+      for (const e of result.entries) {
+        const hash = e.hash ? e.hash.slice(0, 7) : '?';
+        console.log(`  ${chalk.cyan(hash)}  ${e.title || '(sem título)'}`);
+      }
+      blank();
+      if (dryRun) dim('  (dry-run: nada foi gravado no histórico)');
+      return;
+    }
+
     const pushedOnly = subcommand === '--pushed' || arg === '--pushed';
     const limitArg = [subcommand, arg].find((v) => v && /^\d+$/.test(v));
     await showLoading('Carregando histórico', { steps: ['Lendo .jarvis/history', 'Montando timeline'], durationMs: 450 });
@@ -102,6 +146,36 @@ async function main() {
   else if (command === 'pr') await handlePrCommand(subcommand, arg);
   else if (command === 'profile') await handleProfileCommand(subcommand);
   else if (command === 'jira') await handleJiraCommand(subcommand, arg);
+  else if (command === 'report') await runReport(subcommand);
+  else if (command === 'transcrever') await runTranscribe(subcommand);
+  else if (command === 'voz') {
+    const allArgs = process.argv.slice(3);
+    const hasRun = allArgs.includes('--run');
+    const hasListen = allArgs.includes('--ouvir');
+    const hasListMics = allArgs.includes('--listar-microfones');
+    const hasConfig = allArgs.includes('--config');
+    const hasSetup = allArgs.includes('--setup');
+    const hasWake = allArgs.includes('--wake');
+
+    const modelIdx = allArgs.indexOf('--model');
+    const model = modelIdx !== -1 ? allArgs[modelIdx + 1] : undefined;
+
+    const flags = new Set([
+      '--run', '--ouvir', '--listar-microfones',
+      '--config', '--setup', '--model', '--wake',
+    ]);
+    const textArg = allArgs.find((a) => !flags.has(a) && !a.startsWith('--'));
+
+    await runVoice(textArg, {
+      run: hasRun,
+      listen: hasListen,
+      listMics: hasListMics,
+      config: hasConfig,
+      setup: hasSetup,
+      wake: hasWake,
+      model,
+    });
+  }
   else if (command === 'review') {
     const validScopes = ['staged'];
     if (subcommand && !validScopes.includes(subcommand)) warn(`Subcomando '${subcommand}' desconhecido. Usando padrão: todas as alterações.`);
@@ -207,6 +281,7 @@ function showHelpText() {
       ['jarvis jira create', 'Cria nova task (com IA opcional)'],
       ['jarvis jira edit <issue>', 'Edita título, descrição ou responsável'],
       ['jarvis jira delete <issue>', 'Exclui uma issue permanentemente'],
+      ['jarvis report <issue>', 'Relatório de uma issue (Jira + commits)'],
     ]},
     { title: 'perfil', commands: [
       ['jarvis profile setup', 'Configura perfil do desenvolvedor'],
@@ -216,6 +291,14 @@ function showHelpText() {
     { title: 'outros', commands: [
       ['jarvis ignore', 'Gerencia lista de ignore (IA + manual)'],
       ['jarvis history', 'Histórico de commits/pushes do Jarvis'],
+      ['jarvis history sync', 'Sincroniza commits manuais para o histórico'],
+      ['jarvis transcrever <img>', 'Extrai texto de uma imagem (OCR local)'],
+      ['jarvis voz "frase"', 'Simula reconhecimento de voz'],
+      ['jarvis voz --setup', 'Baixa e configura whisper.cpp + modelo'],
+      ['jarvis voz --ouvir', 'Grava do microfone e transcreve (local)'],
+      ['jarvis voz --config', 'Configura caminhos e microfone'],
+      ['jarvis voz --listar-microfones', 'Lista microfones disponíveis (Windows)'],
+      ['jarvis voz --wake', 'Escuta contínua da wake word (Jarvis)'],
     ]},
   ];
   for (const section of sections) {
