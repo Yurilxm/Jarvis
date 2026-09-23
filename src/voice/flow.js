@@ -26,12 +26,13 @@ import {
   chalk,
   muted,
 } from '../ui.js';
-import { runVoiceSetup } from './setup.js';
+import { runVoiceSetup, runInstallStartup, runRemoveStartup } from './setup.js';
 import { createWakeWordDetector, frameSplitter } from './wakeword.js';
 import { writeWavFile, rmsLevel } from './wav.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import { playWakeSound } from './sound.js';
 
 function confidenceLabel(confidence) {
   switch (confidence) {
@@ -294,6 +295,7 @@ async function runWakeMode(opts = {}) {
 
       if (keywordIndex >= 0) {
         processing = true;
+        playWakeSound(); // feedback sonoro (assíncrono)
         blank();
         success(`🎙️  Wake word detectada!`);
         dim('  Fale agora...');
@@ -478,6 +480,16 @@ async function runListenMode(opts = {}) {
  */
 export async function runVoice(initialText, opts = {}) {
   printBanner();
+
+  if (opts.installStartup) {
+    runInstallStartup();
+    return;
+  }
+
+  if (opts.removeStartup) {
+    runRemoveStartup();
+    return;
+  }
 
   if (opts.setup) {
     await runVoiceSetup({ model: opts.model });

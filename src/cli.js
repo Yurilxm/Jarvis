@@ -148,7 +148,13 @@ async function main() {
   else if (command === 'pr') await handlePrCommand(subcommand, arg);
   else if (command === 'profile') await handleProfileCommand(subcommand);
   else if (command === 'jira') await handleJiraCommand(subcommand, arg);
-  else if (command === 'report') await runReport(subcommand);
+  else if (command === 'report') {
+    const allArgs = process.argv.slice(3);
+    const sinceIdx = allArgs.indexOf('--since');
+    const since = sinceIdx !== -1 ? allArgs[sinceIdx + 1] : undefined;
+    const issueKey = allArgs.find((a) => !a.startsWith('--') && a !== since);
+    await runReport(issueKey, { since });
+  }
   else if (command === 'transcrever') await runTranscribe(subcommand);
   else if (command === 'voz') {
     const allArgs = process.argv.slice(3);
@@ -159,6 +165,8 @@ async function main() {
     const hasSetup = allArgs.includes('--setup');
     const hasWake = allArgs.includes('--wake');
     const hasConfirm = allArgs.includes('--confirm');
+    const hasInstallStartup = allArgs.includes('--instalar-startup');
+    const hasRemoveStartup = allArgs.includes('--remover-startup');
 
     const modelIdx = allArgs.indexOf('--model');
     const model = modelIdx !== -1 ? allArgs[modelIdx + 1] : undefined;
@@ -166,6 +174,7 @@ async function main() {
     const flags = new Set([
       '--run', '--ouvir', '--listar-microfones',
       '--config', '--setup', '--model', '--wake', '--confirm',
+      '--instalar-startup', '--remover-startup',
     ]);
     const textArg = allArgs.find((a) => !flags.has(a) && !a.startsWith('--'));
 
@@ -178,6 +187,8 @@ async function main() {
       wake: hasWake,
       confirm: hasConfirm,
       model,
+      installStartup: hasInstallStartup,
+      removeStartup: hasRemoveStartup,
     });
   }
   else if (command === 'review') {
@@ -286,6 +297,7 @@ function showHelpText() {
       ['jarvis jira edit <issue>', 'Edita título, descrição ou responsável'],
       ['jarvis jira delete <issue>', 'Exclui uma issue permanentemente'],
       ['jarvis report <issue>', 'Relatório de uma issue (Jira + commits)'],
+      ['jarvis report --since 7d', 'Relatório de commits dos últimos 7 dias'],
     ]},
     { title: 'perfil', commands: [
       ['jarvis profile setup', 'Configura perfil do desenvolvedor'],
@@ -303,6 +315,8 @@ function showHelpText() {
       ['jarvis voz --config', 'Configura caminhos e microfone'],
       ['jarvis voz --listar-microfones', 'Lista microfones disponíveis (Windows)'],
       ['jarvis voz --wake', 'Escuta contínua da wake word (Jarvis)'],
+      ['jarvis voz --instalar-startup', 'Instala wake word no startup do Windows'],
+      ['jarvis voz --remover-startup', 'Remove wake word do startup'],
     ]},
   ];
   for (const section of sections) {

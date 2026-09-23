@@ -1,39 +1,33 @@
 import { adfToText } from '../jira/adf.js';
 
 /**
- * Monta o prompt para gerar um relatório de desenvolvimento
- * a partir da issue do Jira + commits do histórico.
+ * Monta o prompt para gerar um relatório de desenvolvimento.
  *
- * @param {object} issue - objeto retornado por getIssue() do Jira
- * @param {object[]} commits - lista de commits com { hash, title, body, files, fileCount, diff }
+ * Aceita dois modos:
+ *  - Por issue: `issue` é o objeto do Jira retornado por getIssue().
+ *  - Por período (--since): `issue` é null, e o relatório usa só os commits.
+ *
+ * @param {object|null} issue - objeto do Jira (ou null para modo período)
+ * @param {object[]} commits - lista de commits com { hash, title, body, files, fileCount, diff, at, branch, jiraIssue }
  * @returns {string}
  */
 export function buildReportPrompt(issue, commits) {
-  const fields = issue.fields || {};
-  const title = fields.summary || '(sem título)';
-  const status = fields.status?.name || '-';
-  const type = fields.issuetype?.name || '-';
-  const assignee = fields.assignee?.displayName || 'Não atribuído';
-  const reporter = fields.reporter?.displayName || '-';
-  const descriptionText = adfToText(fields.description);
+  const hasIssue = Boolean(issue);
 
-  const commitsSection = commits.map((c, i) => {
-    const filesList = (c.files || []).map((f) => `  - ${f}`).join('\n');
-    return `### Commit ${i + 1}: ${c.hash ? c.hash.slice(0, 7) : '?'}
-Título: ${c.title || '(sem título)'}
-Corpo: ${c.body || '(sem corpo)'}
-Arquivos (${c.fileCount || 0}):
-${filesList || '  (não registrado)'}
+  let contextSection;
+  let titleLine;
+  let objectiveLine;
 
-Diff:
-\`\`\`
-${c.diff || '(não disponível)'}
-\`\`\``;
-  }).join('\n\n');
+  if (hasIssue) {
+    const fields = issue.fields || {};
+    const title = fields.summary || '(sem título)';
+    const status = fields.status?.name || '-';
+    const type = fields.issuetype?.name || '-';
+    const assignee = fields.assignee?.displayName || 'Não atribuído';
+    const reporter = fields.reporter?.displayName || '-';
+    const descriptionText = adfToText(fields.description);
 
-  return `Você é um assistente de documentação técnica. Gere um relatório de desenvolvimento em português, em markdown, para a issue abaixo.
-
-## Contexto da task (Jira)
+    contextSection = `## Contexto da task (Jira)
 - Chave: ${issue.key}
 - Título: ${title}
 - Tipo: ${type}
@@ -44,18 +38,49 @@ ${c.diff || '(não disponível)'}
 Descrição da task:
 """
 ${descriptionText || '(sem descrição)'}
-"""
+"""`;
 
-## Commits realizados para esta task (${commits.length})
+    titleLine = `# ${issue.key} — ${title}`;
+    objectiveLine = '## Objetivo\n[reformule o objetivo da task em 2-3 frases claras, com base na descrição da task. Se a descrição já estiver clara, pode reaproveitar — mas reescreva de forma objetiva.]';
+  } else {
+    contextSection = `## Contexto
+Relatório de desenvolvimento por período (sem issue específica do Jira). Os commits abaixo cobrem um intervalo de tempo e podem tocar diferentes áreas do projeto.`;
+
+    titleLine = '# Relatório de desenvolvimento';
+    objectiveLine = '## Resumo do período\n[resuma em 2-3 frases o que foi feito no período, com base nos commits. Se houver temas recorrentes, agrupe-os.]';
+  }
+
+  const commitsSection = commits.map((c, i) => {
+    const filesList = (c.files || []).map((f) => `  - ${f}`).join('\n');
+    const branchLine = c.branch ? `Branch: ${c.branch}\n` : '';
+    const jiraLine = c.jiraIssue ? `Issue: ${c.jiraIssue}\n` : '';
+    const dateLine = c.at ? `Data: ${new Date(c.at).toLocaleString('pt-BR')}\n` : '';
+
+    return `### Commit ${i + 1}: ${c.hash ? c.hash.slice(0, 7) : '?'}
+${dateLine}${branchLine}${jiraLine}Título: ${c.title || '(sem título)'}
+Corpo: ${c.body || '(sem corpo)'}
+Arquivos (${c.fileCount || 0}):
+${filesList || '  (não registrado)'}
+
+Diff:
+\`\`\`
+${c.diff || '(não disponível)'}
+\`\`\``;
+  }).join('\n\n');
+
+  return `Você é um assistente de documentação técnica. Gere um relatório de desenvolvimento em português, em markdown, com base nas informações abaixo.
+
+${contextSection}
+
+## Commits (${commits.length})
 
 ${commitsSection}
 
 ## Formato do relatório
 
-# ${issue.key} — ${title}
+${titleLine}
 
-## Objetivo
-[reformule o objetivo da task em 2-3 frases claras, com base na descrição da task. Se a descrição já estiver clara, pode reaproveitar — mas reescreva de forma objetiva.]
+${objectiveLine}
 
 ## O que foi entregue
 [agrupe as entregas por tema quando possível. Seja específico e cite arquivos/módulos quando relevante. Use os commits e diffs acima como fonte.]

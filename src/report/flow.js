@@ -9,6 +9,7 @@ import { sanitizeDiff } from '../commit/sanitize.js';
 import { buildReportPrompt } from './promptBuilder.js';
 import { askAI } from '../ai/client.js';
 import { ensureGitignoreEntry } from '../utils/gitignore.js';
+import { parseDuration, formatDuration } from './duration.js';
 import {
   printBanner,
   printBox,
@@ -31,11 +32,6 @@ function requireJiraConfig() {
   getJiraConfig();
 }
 
-/**
- * Extrai apenas o diff de um commit (sem mensagem/metadados).
- * @param {string} hash
- * @returns {string}
- */
 function getCommitDiff(hash) {
   if (!hash) return '';
   try {
@@ -51,59 +47,83 @@ function getCommitDiff(hash) {
 }
 
 /**
- * Fluxo: jarvis report <issue>
+ * Fluxo: jarvis report <issue> [--since 7d]
  * Gera um relatório de desenvolvimento cruzando a issue do Jira
- * com os commits registrados no histórico para aquela chave.
+ * (opcional) com os commits registrados no histórico.
  *
- * @param {string} issueKey - chave da issue (ex: SDG-71)
+ * @param {string} issueKey - chave da issue (ex: SDG-71) ou null
+ * @param {{ since?: string }} [opts]
  */
-export async function runReport(issueKey) {
+export async function runReport(issueKey, opts = {}) {
   printBanner();
-  requireJiraConfig();
 
-  if (!issueKey) {
-    error('Informe a chave da issue. Ex: jarvis report SDG-71');
+  const sinceMs = opts.since ? parseDuration(opts.since) : null;
+  if (opts.since && !sinceMs) {
+    error(`Formato de --since inválido: "${opts.since}". Use: 7d, 24h, 2w, 1m.`);
     process.exitCode = 1;
     return;
   }
 
-  const key = String(issueKey).trim().toUpperCase();
+  // 1. Buscar issue (se informada)
+  let issue = null;
+  const key = issueKey ? String(issueKey).trim().toUpperCase() : null;
 
-  // 1. Buscar a issue no Jira
-  const spinIssue = spinner(`Buscando ${key} no Jira...`);
-  spinIssue.start();
-  let issue;
-  try {
-    issue = await getIssue(key);
-    spinIssue.succeed(`${key}: ${issue.fields.summary}`);
-  } catch (err) {
-    spinIssue.fail('Erro ao buscar issue no Jira');
-    error(err.message);
-    process.exitCode = 1;
-    return;
+  if (key) {
+    requireJiraConfig();
+    const spinIssue = spinner(`Buscando ${key} no Jira...`);
+    spinIssue.start();
+    try {
+      issue = await getIssue(key);
+      spinIssue.succeed(`${key}: ${issue.fields.summary}`);
+    } catch (err) {
+      spinIssue.fail('Erro ao buscar issue no Jira');
+      error(err.message);
+      process.exitCode = 1;
+      return;
+    }
   }
 
   // 2. Filtrar o histórico
-  const matched = readHistory({ limit: 1000, jiraIssue: key });
+  let matched = readHistory({ limit: 1000, jiraIssue: key || null });
+
+  // Aplicar filtro de tempo se --since
+  if (sinceMs) {
+    const cutoff = Date.now() - sinceMs;
+    matched = matched.filter((c) => {
+      const t = c.at ? new Date(c.at).getTime() : 0;
+      return t >= cutoff;
+    });
+  }
 
   if (matched.length === 0) {
-    warn(`Nenhum commit registrado para ${key} no histórico do Jarvis.`);
-    dim('O histórico é preenchido quando você usa jarvis commit em branches como feature/' + key + '-...');
+    if (key && sinceMs) {
+      warn(`Nenhum commit de ${key} nos últimos ${formatDuration(sinceMs)}.`);
+    } else if (key) {
+      warn(`Nenhum commit registrado para ${key} no histórico do Jarvis.`);
+      dim('O histórico é preenchido quando você usa jarvis commit em branches como feature/' + key + '-...');
+    } else if (sinceMs) {
+      warn(`Nenhum commit registrado nos últimos ${formatDuration(sinceMs)}.`);
+    } else {
+      warn('Nenhum commit encontrado.');
+    }
     blank();
     return;
   }
 
-  // Ordem cronológica (mais antigo → mais recente)
   const ordered = [...matched].reverse();
 
-  section(`${ordered.length} commit(s) encontrado(s) para ${key}`);
+  const header = key
+    ? `${ordered.length} commit(s) para ${key}${sinceMs ? ` nos últimos ${formatDuration(sinceMs)}` : ''}`
+    : `${ordered.length} commit(s)${sinceMs ? ` nos últimos ${formatDuration(sinceMs)}` : ''}`;
+  section(header);
+
   for (const c of ordered) {
     const hash = c.hash ? c.hash.slice(0, 7) : '?';
     console.log(`  ${chalk.cyan(hash)}  ${c.title || '(sem título)'}`);
   }
   blank();
 
-  // 3. Coletar diffs (respeitando limite total)
+  // 3. Coletar diffs
   const spinDiffs = spinner('Coletando diffs dos commits...');
   spinDiffs.start();
 
@@ -135,7 +155,7 @@ export async function runReport(issueKey) {
     dim(`  ${truncatedCount} commit(s) tiveram o diff omitido por limite de contexto.`);
   }
 
-  // 4. Montar prompt e chamar a IA uma única vez
+  // 4. Prompt + IA
   const prompt = buildReportPrompt(issue, commitsWithDiffs);
 
   const spinAI = spinner('Gerando relatório com IA...');
@@ -152,12 +172,12 @@ export async function runReport(issueKey) {
     return;
   }
 
-  // 5. Mostrar o resultado
   blank();
-  printBox(report, { title: `relatório · ${key}`, borderColor: 'cyan' });
+  const title = key ? `relatório · ${key}` : `relatório${sinceMs ? ` · últimos ${formatDuration(sinceMs)}` : ''}`;
+  printBox(report, { title, borderColor: 'cyan' });
   blank();
 
-  // 6. Oferecer salvar
+  // 5. Salvar
   const saveChoice = await select({
     message: 'O que deseja fazer com o relatório?',
     choices: [
@@ -177,11 +197,14 @@ export async function runReport(issueKey) {
     try {
       fs.mkdirSync(reportsDir, { recursive: true });
     } catch {
-      // se não conseguir criar, salva no cwd mesmo
+      // cai no cwd mesmo
     }
   }
 
-  const defaultName = path.join('reports', `${key}-relatorio.md`);
+  const suffix = key || (sinceMs ? `since-${opts.since}` : 'geral');
+  const stamp = new Date().toISOString().slice(0, 10);
+  const defaultName = path.join('reports', `${suffix}-${stamp}.md`);
+
   const fileName = await input({
     message: 'Caminho do arquivo:',
     default: defaultName,
@@ -199,7 +222,6 @@ export async function runReport(issueKey) {
     return;
   }
 
-  // Garante reports/ no .gitignore
   try {
     const gi = ensureGitignoreEntry('reports/');
     if (gi.added) {

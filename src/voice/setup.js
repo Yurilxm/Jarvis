@@ -24,6 +24,12 @@ import {
   chalk,
   muted,
 } from '../ui.js';
+import {
+  installStartup,
+  removeStartup,
+  isStartupInstalled,
+  getStartupPath,
+} from './startup.js';
 
 export const WHISPER_DIR = path.join(os.homedir(), 'whisper.cpp');
 export const MODELS_DIR = path.join(WHISPER_DIR, 'models');
@@ -299,4 +305,60 @@ export async function runVoiceSetup(opts = {}) {
     warn('Alguma etapa ficou pendente. Veja os avisos acima.');
   }
   blank();
+}
+
+/**
+ * Fluxo: jarvis voz --instalar-startup
+ */
+export function runInstallStartup() {
+  printBanner();
+  info('Instalação do Jarvis Voz no startup do Windows');
+  blank();
+
+  if (isStartupInstalled()) {
+    success('Startup já está instalado.');
+    dim(`  Arquivo: ${getStartupPath()}`);
+    blank();
+    dim('Para remover, rode: jarvis voz --remover-startup');
+    return;
+  }
+
+  const result = installStartup();
+  if (!result.ok) {
+    error(result.reason);
+    return;
+  }
+
+  success('Atalho de startup criado.');
+  blank();
+  printBox(
+    `${chalk.bold('Arquivo')}   ${result.path}\n\n` +
+    `${muted('A partir do próximo login, o Jarvis Voz vai iniciar')}\n` +
+    `${muted('automaticamente em modo wake word, minimizado.')}\n\n` +
+    `${muted('Para remover:')} jarvis voz --remover-startup`,
+    { title: 'startup configurado', borderColor: 'green' }
+  );
+  blank();
+}
+
+/**
+ * Fluxo: jarvis voz --remover-startup
+ */
+export function runRemoveStartup() {
+  printBanner();
+  info('Remoção do Jarvis Voz do startup');
+  blank();
+
+  const result = removeStartup();
+  if (!result.ok) {
+    error(result.reason);
+    return;
+  }
+
+  if (!result.removed) {
+    info('Startup não estava instalado.');
+    return;
+  }
+
+  success(`Removido: ${result.path}`);
 }
