@@ -1,5 +1,30 @@
-import { detectPorcupine, getPicovoiceAccessKey } from './dependencies.js';
-import { readVoiceConfig } from './config.js';
+/**
+ * ⚠️  LEGACY / EXPERIMENTAL — Porcupine (Picovoice)
+ *
+ * Este módulo usa o SDK do Porcupine para wake word. Ele está mantido aqui
+ * por compatibilidade, mas NÃO é o caminho principal do Jarvis Voz.
+ *
+ * Motivo:
+ *  - A Picovoice fechou o free tier do console para e-mails pessoais
+ *  - Sem conta paga, a AccessKey não pode ser gerada
+ *  - O modo `jarvis voz --wake` só funciona com conta paga
+ *
+ * O que vai substituir:
+ *  - Vosk (open source, offline, sem conta) — ver etapa E do roadmap
+ *  - O Vosk também faz keyword spotting local e não precisa de API key
+ *
+ * Se você tem conta paga na Picovoice e quer usar mesmo assim:
+ *  1. Gere uma AccessKey em https://console.picovoice.ai/
+ *  2. Defina PICOVOICE_ACCESS_KEY no ~/.jarvis-dev/.env
+ *  3. Rode: jarvis voz --wake
+ *
+ * Não remova este arquivo: `frameSplitter` é reaproveitado em outras partes
+ * do pipeline de áudio. Quando o Vosk for implementado, esta pasta pode ser
+ * deletada inteira.
+ */
+
+import { detectPorcupine, getPicovoiceAccessKey } from '../dependencies.js';
+import { readVoiceConfig } from '../config.js';
 
 /**
  * Palavras built-in suportadas pelo SDK do Porcupine.
@@ -54,9 +79,10 @@ export async function createWakeWordDetector(opts = {}) {
       ok: false,
       reason:
         'AccessKey do Picovoice não configurada.\n' +
-        '  Obtenha uma grátis em https://console.picovoice.ai/\n' +
-        '  Depois defina a variável PICOVOICE_ACCESS_KEY no seu .env pessoal\n' +
-        '  ou rode: jarvis voz --config',
+        '  ⚠️  O free tier da Picovoice foi fechado para e-mails pessoais.\n' +
+        '  Este modo só funciona com conta paga em https://console.picovoice.ai/.\n' +
+        '  O Vosk (wake word open source) substituirá o Porcupine em breve.\n' +
+        '  Se você tem conta paga, defina PICOVOICE_ACCESS_KEY no ~/.jarvis-dev/.env',
     };
   }
 
@@ -108,6 +134,9 @@ export async function createWakeWordDetector(opts = {}) {
 /**
  * Consome um Buffer PCM 16-bit LE e devolve frames do tamanho esperado
  * pelo Porcupine. Mantém sobras internas em um Buffer acumulador.
+ *
+ * NOTA: apesar do nome "Porcupine", esta função é genérica — qualquer
+ * sistema baseado em frames PCM (Vosk, outros) pode reusar.
  *
  * @param {number} frameLength - número de amostras por frame
  * @returns {{ push: (chunk: Buffer) => Int16Array[], flush: () => void }}

@@ -1,4 +1,4 @@
-import { BUILTIN_KEYWORDS, isBuiltinKeyword, frameSplitter } from '../src/voice/wakeword.js';
+import { BUILTIN_KEYWORDS, isBuiltinKeyword, frameSplitter } from '../src/voice/_legacy/wakeword.js';
 import { writeWavFile, rmsLevel } from '../src/voice/wav.js';
 import fs from 'node:fs';
 import path from 'node:path';
