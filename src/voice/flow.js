@@ -52,7 +52,11 @@ export async function runVoice(initialText, opts = {}) {
 
   // Setup (baixar whisper + modelo)
   if (opts.setup) {
-    await runVoiceSetup({ model: opts.model });
+    await runVoiceSetup({
+      model: opts.model,
+      engine: opts.engine,
+      voskModel: opts.voskModel,
+    });
     return;
   }
 

@@ -4,12 +4,23 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { updateVoiceConfig } from './config.js';
+import { updateVoiceConfig, readVoiceConfig } from './config.js';
 import {
   detectRecorder,
   detectWhisper,
   detectWhisperModel,
 } from './dependencies.js';
+import {
+  checkVoskDependencies,
+} from './vosk/dependencies.js';
+import {
+  VOSK_MODELS,
+  downloadVoskModel,
+  formatBytes,
+  getVoskModelDir,
+  listInstalledVoskModels,
+  estimateDirSize,
+} from './vosk/model-manager.js';
 import {
   printBanner,
   printBox,
@@ -57,29 +68,20 @@ export function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-/**
- * Escolhe o asset correto da release do whisper.cpp para a plataforma atual.
- * Retorna o objeto do asset ({ name, browser_download_url }) ou null.
- *
- * @param {Array<{name:string,browser_download_url:string}>} assets
- * @param {{ platform?: string, arch?: string }} [env]
- * @returns {{name:string,browser_download_url:string}|null}
- */
+// ─── Whisper (parte existente) ───────────────────────────────────────────
+
 export function pickWhisperAsset(assets, env = {}) {
   const platform = env.platform || process.platform;
   const arch = env.arch || process.arch;
 
   if (platform === 'linux') return null;
 
-  // Filtra apenas assets que pareçam binários pré-compilados (têm "bin" e ".zip").
-  // Ignora "source code" (que o GitHub sempre inclui).
   const zips = assets.filter(
     (a) => /\.zip$/i.test(a.name) && /bin/i.test(a.name)
   );
 
   if (zips.length === 0) return null;
 
-  // Prioridade por arquitetura
   const patterns = [];
   if (platform === 'win32') {
     if (arch === 'x64') {
@@ -258,13 +260,136 @@ async function setupModel(modelKey) {
   return destPath;
 }
 
+// ─── Vosk (novo) ─────────────────────────────────────────────────────────
+
+/**
+ * Setup do Vosk — instala pacote Python (orientação) e baixa modelo.
+ * @param {{ voskModel?: 'small-pt'|'full-pt' }} [opts]
+ */
+async function setupVosk(opts = {}) {
+  const cfg = readVoiceConfig();
+  const deps = checkVoskDependencies(cfg);
+
+  // 1. Python + pacote vosk
+  if (deps.python.ok) {
+    success(`Python com vosk OK: ${deps.python.python.label}`);
+  } else {
+    warn('Python ou pacote vosk ausente.');
+    console.log(deps.python.reason);
+    blank();
+  }
+
+  // 2. Modelo
+  const modelKey = opts.voskModel || 'small-pt';
+  const modelInfo = VOSK_MODELS[modelKey];
+
+  if (!modelInfo) {
+    error(`Modelo Vosk desconhecido: ${modelKey}`);
+    return { ok: false };
+  }
+
+  section(`Modelo: ${modelInfo.label}`);
+
+  let modelPath = null;
+  let modelSize = 0;
+
+  const expectedDir = getVoskModelDir(modelInfo.name);
+  if (fs.existsSync(expectedDir) && deps.model.ok && deps.model.path === expectedDir) {
+    success(`Modelo já instalado: ${modelInfo.name}`);
+    modelPath = expectedDir;
+    const installed = listInstalledVoskModels().find((m) => m.path === expectedDir);
+    modelSize = installed ? installed.sizeBytes : estimateDirSize(expectedDir);
+  } else {
+    const sp = spinner(`Baixando ${modelInfo.name}...`);
+    sp.start();
+    try {
+      const res = await downloadVoskModel(modelKey, {
+        onProgress: (cur, total) => {
+          if (total > 0) {
+            const pct = Math.round((cur / total) * 100);
+            sp.message = `Baixando ${modelInfo.name}... ${pct}%`;
+          }
+        },
+      });
+      modelPath = res.path;
+      modelSize = res.sizeBytes;
+      sp.succeed(`Modelo baixado e extraído (${formatBytes(res.sizeBytes)})`);
+    } catch (err) {
+      sp.fail(`Falha: ${err.message}`);
+      return { ok: false };
+    }
+  }
+
+  // 3. Persiste na config
+  const patch = {};
+  if (modelPath) patch.voskModelPath = modelPath;
+  if (deps.python.ok) {
+    patch.voskPythonCmd = deps.python.python.cmd;
+    patch.voskPythonArgs = deps.python.python.args;
+  }
+  if (Object.keys(patch).length > 0) updateVoiceConfig(patch);
+
+  return {
+    ok: Boolean(modelPath) && deps.python.ok,
+    modelPath,
+    modelSize,
+    python: deps.python.python || null,
+  };
+}
+
+// ─── Fluxo principal do --setup ──────────────────────────────────────────
+
 /**
  * Fluxo do `jarvis voz --setup`.
- * @param {{ model?: string }} [opts]
+ * @param {{
+ *   model?: string,
+ *   engine?: 'whisper'|'vosk',
+ *   voskModel?: 'small-pt'|'full-pt',
+ * }} [opts]
  */
 export async function runVoiceSetup(opts = {}) {
   printBanner();
-  info('Configuração do Jarvis Voz');
+
+  const engine = opts.engine || 'whisper';
+
+  if (engine === 'vosk') {
+    info('Configuração do Jarvis Voz — engine Vosk (wake word)');
+    blank();
+
+    const recorder = detectRecorder();
+    if (recorder.ok) {
+      success(`Gravador OK: ${recorder.type} — ${recorder.path}`);
+    } else {
+      warn('Gravador de áudio não encontrado.');
+      console.log(recorder.reason);
+      blank();
+    }
+
+    const voskResult = await setupVosk(opts);
+    blank();
+
+    printBox(
+      `${chalk.bold('engine')}     vosk\n` +
+      `${chalk.bold('python')}     ${voskResult.python ? voskResult.python.label : muted('ausente')}\n` +
+      `${chalk.bold('modelo')}     ${voskResult.modelPath ? path.basename(voskResult.modelPath) : muted('não configurado')}\n` +
+      `${chalk.bold('tamanho')}    ${voskResult.modelSize ? formatBytes(voskResult.modelSize) : muted('-')}\n` +
+      `${chalk.bold('gravador')}   ${recorder.ok ? recorder.type : muted('ausente')}\n` +
+      `${chalk.bold('config')}     ${path.join(os.homedir(), '.jarvis-dev', 'voice.json')}`,
+      { title: 'resultado', borderColor: 'green' }
+    );
+    blank();
+
+    if (voskResult.ok) {
+      success('Vosk configurado. Quando quiser testar: jarvis voz --wake');
+    } else {
+      warn('Alguma etapa ficou pendente. Veja os avisos acima.');
+    }
+    blank();
+    return;
+  }
+
+  // Engine whisper (comportamento original)
+  info('Configuração do Jarvis Voz — engine whisper (transcrição)');
   blank();
 
   const recorder = detectRecorder();
@@ -290,6 +415,7 @@ export async function runVoiceSetup(opts = {}) {
   if (Object.keys(patch).length > 0) updateVoiceConfig(patch);
 
   printBox(
+    `${chalk.bold('engine')}     whisper\n` +
     `${chalk.bold('whisper')}    ${whisperPath || muted('não configurado')}\n` +
     `${chalk.bold('modelo')}     ${modelPath ? path.basename(modelPath) : muted('não configurado')}\n` +
     `${chalk.bold('gravador')}   ${recorder.ok ? recorder.type : muted('ausente')}\n` +
@@ -307,9 +433,8 @@ export async function runVoiceSetup(opts = {}) {
   blank();
 }
 
-/**
- * Fluxo: jarvis voz --instalar-startup
- */
+// ─── Startup ─────────────────────────────────────────────────────────────
+
 export function runInstallStartup() {
   printBanner();
   info('Instalação do Jarvis Voz no startup do Windows');
@@ -341,9 +466,6 @@ export function runInstallStartup() {
   blank();
 }
 
-/**
- * Fluxo: jarvis voz --remover-startup
- */
 export function runRemoveStartup() {
   printBanner();
   info('Remoção do Jarvis Voz do startup');

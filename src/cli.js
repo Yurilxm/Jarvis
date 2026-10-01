@@ -178,10 +178,17 @@ async function main() {
     const modelIdx = allArgs.indexOf('--model');
     const model = modelIdx !== -1 ? allArgs[modelIdx + 1] : undefined;
 
+    const engineIdx = allArgs.indexOf('--engine');
+    const engine = engineIdx !== -1 ? allArgs[engineIdx + 1] : undefined;
+
+    const voskModelIdx = allArgs.indexOf('--vosk-model');
+    const voskModel = voskModelIdx !== -1 ? allArgs[voskModelIdx + 1] : undefined;
+
     const flags = new Set([
       '--run', '--ouvir', '--listar-microfones',
       '--config', '--setup', '--model', '--wake', '--confirm',
       '--instalar-startup', '--remover-startup',
+      '--engine', '--vosk-model',
     ]);
     const textArg = allArgs.find((a) => !flags.has(a) && !a.startsWith('--'));
 
@@ -194,6 +201,8 @@ async function main() {
       wake: hasWake,
       confirm: hasConfirm,
       model,
+      engine,
+      voskModel,
       installStartup: hasInstallStartup,
       removeStartup: hasRemoveStartup,
     });
