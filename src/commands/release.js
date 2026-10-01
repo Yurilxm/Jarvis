@@ -83,13 +83,30 @@ export async function runRelease() {
 
   success('package.json e README atualizados.');
 
+  // Verifica se ha alteracao real para commitar. Se a versao
+  // ja era a nova (release retroativo para criar tag), pula o commit
+  // mas continua com o fluxo de tag e push.
+  let hasChanges = false;
   try {
-    execSync(`git add package.json README.md`, { encoding: 'utf-8', stdio: 'inherit' });
-    execSync(`git commit -m "chore: bump version to ${tagName}"`, { encoding: 'utf-8', stdio: 'inherit' });
-    success('Commit criado.');
-  } catch (err) {
-    error(`Erro ao criar commit: ${err.message}`);
-    process.exit(1);
+    const out = execSync('git status --porcelain package.json README.md', {
+      encoding: 'utf-8',
+    }).trim();
+    hasChanges = out.length > 0;
+  } catch {
+    hasChanges = true; // se falhar, assume que tem — melhor tentar commitar
+  }
+
+  if (hasChanges) {
+    try {
+      execSync('git add package.json README.md', { encoding: 'utf-8', stdio: 'inherit' });
+      execSync(`git commit -m "chore: bump version to ${tagName}"`, { encoding: 'utf-8', stdio: 'inherit' });
+      success('Commit criado.');
+    } catch (err) {
+      error(`Erro ao criar commit: ${err.message}`);
+      process.exit(1);
+    }
+  } else {
+    dim('  Nada a commitar (versao ja e a nova). Criando apenas a tag.');
   }
 
   try {

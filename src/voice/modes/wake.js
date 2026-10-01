@@ -3,9 +3,8 @@ import { runVoskWakeLoop } from "../vosk/wake-loop.js";
 /**
  * Modo --wake: escuta continua com Vosk (Python, open source, offline).
  *
- * Historico:
- *   Antes usava Porcupine (Picovoice), mas o free tier foi fechado.
- *   O codigo antigo ficou em src/voice/_legacy/wakeword.js.
+ * O codigo antigo (Porcupine/Picovoice) foi removido — o free tier foi
+ * fechado e o Vosk cobre o caso de uso com vantagens (offline, sem conta).
  *
  * @param {{ confirm?: boolean }} [opts]
  */

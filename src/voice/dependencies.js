@@ -289,26 +289,6 @@ export function checkVoiceDependencies() {
   };
 }
 
-/**
- * Verifica se o SDK do Porcupine está instalado (import dinâmico).
- * Retorna um objeto com o módulo importado ou com erro amigável.
- *
- * @returns {Promise<{ ok: boolean, module?: any, reason?: string }>}
- */
-export async function detectPorcupine() {
-  try {
-    const mod = await import('@picovoice/porcupine-node');
-    return { ok: true, module: mod };
-  } catch {
-    return {
-      ok: false,
-      reason:
-        'A wake word requer o pacote "@picovoice/porcupine-node".\n' +
-        '  Instale com: npm install @picovoice/porcupine-node\n' +
-        '  (ou garanta que ele esteja em optionalDependencies e rode npm install)',
-    };
-  }
-}
 
 /**
  * Lê a AccessKey do Picovoice (env ou config).
