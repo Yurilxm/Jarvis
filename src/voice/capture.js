@@ -13,7 +13,7 @@ import { writeWavFile, rmsLevel } from './wav.js';
  * @param {NodeJS.ReadableStream} stream
  * @param {number} sampleRate
  * @param {{ maxDurationMs?: number, silenceMs?: number, minVoiceMs?: number }} [opts]
- * @returns {Promise<string>} caminho do WAV salvo
+ * @returns {Promise<{ path: string, hadVoice: boolean, durationMs: number }>}
  */
 export function captureCommandPhrase(stream, sampleRate, opts = {}) {
   const maxDurationMs = opts.maxDurationMs ?? 8000;
@@ -43,7 +43,12 @@ export function captureCommandPhrase(stream, sampleRate, opts = {}) {
         fs.mkdirSync(path.dirname(outPath), { recursive: true });
       }
       writeWavFile(outPath, pcm, { sampleRate });
-      resolve(outPath);
+      const durationMs = Date.now() - start;
+      resolve({
+        path: outPath,
+        hadVoice: totalVoiceMs >= minVoiceMs,
+        durationMs,
+      });
     };
 
     const onError = (err) => {

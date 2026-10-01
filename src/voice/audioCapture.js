@@ -216,7 +216,11 @@ export function startAudioStream(options) {
   }
 
   const child = spawn(recorderPath, args, {
-    stdio: ['ignore', 'pipe', 'pipe'],
+    // stderr em 'ignore' — ffmpeg cospe muita coisa no stderr (device
+    // enumeration, channel layout, etc). No --ouvir o buffer nao enche,
+    // mas no --wake (minutos rodando) ele bloqueia o processo e para de
+    // produzir audio.
+    stdio: ['ignore', 'pipe', 'ignore'],
   });
 
   const stream = child.stdout;

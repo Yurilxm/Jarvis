@@ -52,7 +52,7 @@ export async function runListenMode(opts = {}) {
   const recordSpinner = spinner('Ouvindo... fale agora.');
   recordSpinner.start();
 
-  let wavPath;
+  let capture;
   let streamControl;
   try {
     streamControl = startAudioStream({
@@ -61,7 +61,7 @@ export async function runListenMode(opts = {}) {
       audioDevice: deps.audioDevice,
     });
 
-    wavPath = await captureCommandPhrase(streamControl.stream, 16000, {
+    capture = await captureCommandPhrase(streamControl.stream, 16000, {
       maxDurationMs: readVoiceConfig().commandMaxMs ?? 8000,
       silenceMs: readVoiceConfig().commandSilenceMs ?? 1200,
       minVoiceMs: 300,
@@ -75,6 +75,13 @@ export async function runListenMode(opts = {}) {
     error(err.message);
     return;
   }
+
+  if (!capture.hadVoice) {
+    warn('Nenhuma fala foi detectada no áudio.');
+    return;
+  }
+
+  const wavPath = capture.path;
 
   const transSpin = spinner('Transcrevendo com whisper.cpp...');
   transSpin.start();
