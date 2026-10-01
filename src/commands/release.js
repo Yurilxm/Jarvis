@@ -23,7 +23,7 @@ export async function runRelease() {
   const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const pkgPath = path.join(rootDir, 'package.json');
   const readmePath = path.join(rootDir, 'README.md');
-  
+
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
   const current = pkg.version;
   info(`Versão atual: ${accent(current)}`);
@@ -70,35 +70,54 @@ export async function runRelease() {
     return;
   }
 
-  // Atualizar package.json
-  pkg.version = newVersion;
-  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
-  
-  // Atualizar README.md
-  if (fs.existsSync(readmePath)) {
-    let readme = fs.readFileSync(readmePath, 'utf-8');
-    readme = readme.replace(/\*\*Versão:\*\* \d+\.\d+\.\d+/, `**Versão:** ${newVersion}`);
-    fs.writeFileSync(readmePath, readme, 'utf-8');
+  // Escreve package.json APENAS se a versao realmente mudou.
+  // Reescrever com JSON.stringify() sempre altera bytes (line endings,
+  // trailing newline) e deixa o git com falso "modified".
+  let pkgChanged = false;
+  if (pkg.version !== newVersion) {
+    pkg.version = newVersion;
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
+    pkgChanged = true;
   }
 
-  success('package.json e README atualizados.');
+  // Escreve README APENAS se o texto realmente mudar.
+  let readmeChanged = false;
+  if (fs.existsSync(readmePath)) {
+    const readme = fs.readFileSync(readmePath, 'utf-8');
+    const updated = readme.replace(/\*\*Versão:\*\* \d+\.\d+\.\d+/, `**Versão:** ${newVersion}`);
+    if (updated !== readme) {
+      fs.writeFileSync(readmePath, updated, 'utf-8');
+      readmeChanged = true;
+    }
+  }
 
-  // Verifica se ha alteracao real para commitar. Se a versao
-  // ja era a nova (release retroativo para criar tag), pula o commit
-  // mas continua com o fluxo de tag e push.
-  let hasChanges = false;
-  try {
-    const out = execSync('git status --porcelain package.json README.md', {
-      encoding: 'utf-8',
-    }).trim();
-    hasChanges = out.length > 0;
-  } catch {
-    hasChanges = true; // se falhar, assume que tem — melhor tentar commitar
+  if (pkgChanged || readmeChanged) {
+    success('package.json e README atualizados.');
+  } else {
+    dim('  Versao ja e a nova. Nada a atualizar nos arquivos.');
+  }
+
+  // Verifica se ha alteracao REAL no staging.
+  // git status --porcelain pode reportar falso positivo por line endings,
+  // entao usamos git diff --cached --quiet (fonte da verdade).
+  let hasChanges = pkgChanged || readmeChanged;
+  if (hasChanges) {
+    try {
+      execSync('git add package.json README.md', { encoding: 'utf-8', stdio: 'pipe' });
+    } catch {
+      // se git add falhar, mantem flag original
+    }
+    try {
+      // retorna 0 se NADA staged, 1 se algo staged
+      execSync('git diff --cached --quiet package.json README.md', { stdio: 'pipe' });
+      hasChanges = false;
+    } catch {
+      hasChanges = true;
+    }
   }
 
   if (hasChanges) {
     try {
-      execSync('git add package.json README.md', { encoding: 'utf-8', stdio: 'inherit' });
       execSync(`git commit -m "chore: bump version to ${tagName}"`, { encoding: 'utf-8', stdio: 'inherit' });
       success('Commit criado.');
     } catch (err) {
@@ -106,7 +125,7 @@ export async function runRelease() {
       process.exit(1);
     }
   } else {
-    dim('  Nada a commitar (versao ja e a nova). Criando apenas a tag.');
+    dim('  Nada a commitar. Criando apenas a tag.');
   }
 
   try {
