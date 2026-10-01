@@ -1,20 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { runLocalOcr } from './ocr-local.js';
+import { extractTextWithGemini, getMimeType } from './gemini-vision.js';
 
 const SUPPORTED_EXTENSIONS = [
   '.png', '.jpg', '.jpeg', '.webp', '.bmp',
   '.tiff', '.tif', '.gif',
 ];
-
-/**
- * Diretório de cache do tesseract.js (fica na pasta do usuário,
- * não no projeto). Evita que arquivos .traineddata apareçam no cwd.
- * @returns {string}
- */
-function getTesseractCachePath() {
-  return path.join(os.homedir(), '.jarvis-dev', 'tesseract-cache');
-}
 
 /**
  * Verifica se o arquivo parece uma imagem suportada (por extensão).
@@ -55,74 +47,55 @@ export function validateImageFile(filePath) {
 }
 
 /**
- * Carrega o tesseract.js dinamicamente. Se não estiver instalado,
- * lança um erro amigável.
+ * Extrai texto usando OCR local (RapidOCR via Python).
+ * @param {string} imagePath
+ * @returns {object}
  */
-async function loadTesseract() {
-  try {
-    const mod = await import('tesseract.js');
-    return mod.default || mod;
-  } catch {
-    throw new Error(
-      'Esta funcionalidade requer o pacote "tesseract.js".\n' +
-      '  Instale com: npm install tesseract.js'
-    );
-  }
+export function extractTextWithLocal(imagePath) {
+  return runLocalOcr(imagePath);
 }
 
+// Reexports úteis para o flow
+export { extractTextWithGemini, getMimeType };
+
 /**
- * Extrai o texto de uma imagem usando OCR local (tesseract.js).
- * Sem nenhuma chamada de IA — só extração determinística.
+ * Orquestrador. Modos:
+ *  - 'auto'  (padrão): roda local; retorna needsAI se confiança baixa
+ *                      OU qualidade ruim
+ *  - 'local' : só local
+ *  - 'ia'    : só IA (Gemini Vision)
  *
- * @param {string} filePath
- * @param {{ lang?: string, onProgress?: (info: object) => void }} [options]
- * @returns {Promise<{ text: string, confidence: number, language: string }>}
+ * @param {string} imagePath
+ * @param {{ mode?: 'auto'|'local'|'ia' }} [options]
+ * @returns {Promise<object>}
  */
-export async function extractTextFromImage(filePath, options = {}) {
-  const { lang = 'por+eng', onProgress } = options;
-  const absolute = path.resolve(filePath);
+export async function extractTextFromImage(imagePath, options = {}) {
+  const mode = options.mode || 'auto';
 
-  const Tesseract = await loadTesseract();
-
-  // Garante que o diretório de cache existe
-  const cachePath = getTesseractCachePath();
-  try {
-    if (!fs.existsSync(cachePath)) {
-      fs.mkdirSync(cachePath, { recursive: true });
-    }
-  } catch {
-    // se não conseguir criar, o tesseract tenta o default
-  }
-
-  // Monta opções do recognize SEMPRE válidas: o tesseract.js quebra se
-  // "logger" vier com valor undefined/null. Só inclui quando for função.
-  const recognizeOptions = {
-    cachePath,
-  };
-  if (typeof onProgress === 'function') {
-    recognizeOptions.logger = (info) => {
-      try {
-        onProgress(info);
-      } catch {
-        // nunca deixa erro do callback derrubar o OCR
-      }
+  if (mode === 'ia') {
+    const result = await extractTextWithGemini(imagePath);
+    return {
+      text: result.text,
+      lines: [],
+      confidence: null,
+      quality: null,
+      engine: 'gemini-vision',
+      needsAI: false,
     };
   }
 
-  let result;
-  try {
-    result = await Tesseract.recognize(absolute, lang, recognizeOptions);
-  } catch (err) {
-    const msg = err?.message || String(err);
-    throw new Error(`Falha ao processar a imagem (OCR): ${msg}`);
+  const local = runLocalOcr(imagePath);
+
+  if (mode === 'local') {
+    return { ...local, needsAI: false };
   }
 
-  const text = (result?.data?.text || '').trim();
-  const confidence = typeof result?.data?.confidence === 'number'
-    ? result.data.confidence
-    : 0;
-
-  return { text, confidence, language: lang };
+  // auto: decide se vale oferecer IA
+  const needsAI = shouldOfferAI(local.confidence, local.quality);
+  return { ...local, needsAI };
 }
 
-export { SUPPORTED_EXTENSIONS, getTesseractCachePath };
+// Importado do ocr-local para o orquestrador usar
+import { shouldOfferAI } from './ocr-local.js';
+
+export { SUPPORTED_EXTENSIONS };

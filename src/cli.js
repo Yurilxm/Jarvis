@@ -155,7 +155,14 @@ async function main() {
     const issueKey = allArgs.find((a) => !a.startsWith('--') && a !== since);
     await runReport(issueKey, { since });
   }
-  else if (command === 'transcrever') await runTranscribe(subcommand);
+  else if (command === 'transcrever') {
+    const allArgs = process.argv.slice(3);
+    const hasLocal = allArgs.includes('--local');
+    const hasIA = allArgs.includes('--ia');
+    const pathArg = allArgs.find((a) => !a.startsWith('--'));
+    const mode = hasIA ? 'ia' : (hasLocal ? 'local' : 'auto');
+    await runTranscribe(pathArg, { mode });
+  }
   else if (command === 'voz') {
     const allArgs = process.argv.slice(3);
     const hasRun = allArgs.includes('--run');
@@ -308,7 +315,9 @@ function showHelpText() {
       ['jarvis ignore', 'Gerencia lista de ignore (IA + manual)'],
       ['jarvis history', 'Histórico de commits/pushes do Jarvis'],
       ['jarvis history sync', 'Sincroniza commits manuais para o histórico'],
-      ['jarvis transcrever <img>', 'Extrai texto de uma imagem (OCR local)'],
+      ['jarvis transcrever <img>', 'OCR híbrido (RapidOCR local + Gemini Vision)'],
+      ['jarvis transcrever <img> --local', 'Força OCR local (sem IA)'],
+      ['jarvis transcrever <img> --ia', 'Força transcrição via Gemini Vision'],
       ['jarvis voz "frase"', 'Simula reconhecimento de voz'],
       ['jarvis voz --setup', 'Baixa e configura whisper.cpp + modelo'],
       ['jarvis voz --ouvir', 'Grava do microfone e transcreve (local)'],
