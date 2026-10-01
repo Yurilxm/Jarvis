@@ -24,6 +24,8 @@ import {
 
 const SAMPLE_RATE = 16000;
 const DEFAULT_SESSION_TIMEOUT_MS = 30000;
+const MAX_LISTENER_RESTARTS = 3;
+const RESTART_BACKOFF_MS = 2000;
 
 /**
  * Mostra o que falta para usar o modo --wake (Vosk).
@@ -43,18 +45,13 @@ export function printMissingVoskDependencies(deps) {
     blank();
   }
   if (!deps.script.ok) {
-    console.log(`Script nao encontrado: ${deps.script.path}`);
+    console.log("Script nao encontrado: " + deps.script.path);
     blank();
   }
 }
 
 /**
- * Loop de wake word com Vosk, com suporte a modo sessao:
- *   1. Aguarda "Jarvis" (Vosk)
- *   2. Ao detectar, entra em sessao
- *   3. Em sessao: captura comandos seguidos sem exigir "Jarvis" de novo
- *   4. Sai da sessao apos `sessionTimeoutMs` de silencio
- *   5. Volta ao passo 1
+ * Loop de wake word com Vosk, com modo sessao e auto-restart do listener.
  *
  * @param {{ confirm?: boolean }} [opts]
  */
@@ -76,18 +73,18 @@ export async function runVoskWakeLoop(opts = {}) {
   const sessionTimeoutMs = cfg.sessionTimeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
 
   printBox(
-    `${chalk.bold("Engine")}       Vosk (local, sem API)\n` +
-    `${chalk.bold("Wake word")}    ${cfg.wakeKeyword || "jarvis"}\n` +
-    `${chalk.bold("Python")}       ${voskDeps.python.python.label}\n` +
-    `${chalk.bold("Modelo")}       ${path.basename(voskDeps.model.path)}\n` +
-    `${chalk.bold("whisper")}      ${path.basename(whisperDeps.whisper.path)}\n` +
-    `${chalk.bold("Microfone")}    ${whisperDeps.audioDevice || muted("default do sistema")}\n` +
-    `${chalk.bold("Sessao")}       ${Math.round(sessionTimeoutMs / 1000)}s apos a wake word`,
+    chalk.bold("Engine") + "       Vosk (local, sem API)\n" +
+    chalk.bold("Wake word") + "    " + (cfg.wakeKeyword || "jarvis") + "\n" +
+    chalk.bold("Python") + "       " + voskDeps.python.python.label + "\n" +
+    chalk.bold("Modelo") + "       " + path.basename(voskDeps.model.path) + "\n" +
+    chalk.bold("whisper") + "      " + path.basename(whisperDeps.whisper.path) + "\n" +
+    chalk.bold("Microfone") + "    " + (whisperDeps.audioDevice || muted("default do sistema")) + "\n" +
+    chalk.bold("Sessao") + "       " + Math.round(sessionTimeoutMs / 1000) + "s apos a wake word",
     { title: "wake word ativo", borderColor: "green" }
   );
   blank();
-  info(`Diga "Jarvis" para ativar. Ctrl+C para sair.`);
-  dim(`  Depois de ativado, continua escutando por ${Math.round(sessionTimeoutMs / 1000)}s sem precisar dizer "Jarvis" de novo.`);
+  info('Diga "Jarvis" para ativar. Ctrl+C para sair.');
+  dim("  Depois de ativado, continua escutando por " + Math.round(sessionTimeoutMs / 1000) + "s sem precisar dizer \"Jarvis\" de novo.");
   blank();
 
   let running = true;
@@ -97,43 +94,99 @@ export async function runVoskWakeLoop(opts = {}) {
   };
   process.once("SIGINT", onSigint);
 
-  const audio = startAudioStream({
-    recorderPath: whisperDeps.recorder.path,
-    type: whisperDeps.recorder.type,
-    audioDevice: whisperDeps.audioDevice,
-  });
-
-  const listener = createVoskListener({
-    pythonCmd: voskDeps.python.python.cmd,
-    pythonArgs: voskDeps.python.python.args,
-    scriptPath: voskDeps.script.path,
-    modelPath: voskDeps.model.path,
-  });
-
-  let processing = false;
+  // ─── Estado mutavel ───────────────────────────────────────────────
+  let audio = null;
+  let listener = null;
   let wakeDetected = false;
+  let processing = false;
+  let audioClosed = false;
+  let listenerRestarts = 0;
+  let onAudioData = null;
 
-  listener.on("log", () => {
-    // Logs do Python — silenciados por padrao.
-    // Para ver: JARVIS_VOSK_DEBUG=1 no ambiente.
-  });
+  // ─── Factory do listener (permite restart) ────────────────────────
+  function createListener() {
+    const l = createVoskListener({
+      pythonCmd: voskDeps.python.python.cmd,
+      pythonArgs: voskDeps.python.python.args,
+      scriptPath: voskDeps.script.path,
+      modelPath: voskDeps.model.path,
+    });
 
-  listener.on("error", (err) => {
-    error(`Erro no listener Vosk: ${err.message}`);
+    l.on("log", () => {
+      // Logs silenciados. Use JARVIS_VOSK_DEBUG=1 pra ver.
+    });
+
+    l.on("error", (err) => {
+      error("Erro no listener Vosk: " + err.message);
+    });
+
+    l.on("wake", () => {
+      wakeDetected = true;
+    });
+
+    l.on("close", () => {
+      // Se fechou por vontade propria (stop), ignora.
+      if (!running) return;
+
+      // Senao, tenta reconectar
+      if (listenerRestarts < MAX_LISTENER_RESTARTS) {
+        listenerRestarts++;
+        const delay = RESTART_BACKOFF_MS * listenerRestarts;
+        warn("Listener Vosk caiu. Reconectando em " + Math.round(delay / 1000) + "s... (" + listenerRestarts + "/" + MAX_LISTENER_RESTARTS + ")");
+        setTimeout(() => {
+          if (!running) return;
+          try {
+            listener = createListener();
+            // Reanexa o forwarding de audio
+            if (audio && audio.stream && onAudioData) {
+              audio.stream.on("data", onAudioData);
+            }
+          } catch (err) {
+            error("Falha ao reconectar listener: " + err.message);
+            running = false;
+          }
+        }, delay).unref();
+      } else {
+        error("Listener Vosk caiu " + MAX_LISTENER_RESTARTS + " vezes seguidas. Encerrando.");
+        running = false;
+      }
+    });
+
+    return l;
+  }
+
+  // ─── Audio ────────────────────────────────────────────────────────
+  try {
+    audio = startAudioStream({
+      recorderPath: whisperDeps.recorder.path,
+      type: whisperDeps.recorder.type,
+      audioDevice: whisperDeps.audioDevice,
+    });
+  } catch (err) {
+    error("Falha ao abrir microfone: " + err.message);
+    process.removeListener("SIGINT", onSigint);
+    return;
+  }
+
+  audio.child.on("close", () => {
+    if (!running) return;
+    audioClosed = true;
+    warn("Microfone desconectado (ffmpeg encerrou).");
+    dim("  Encerrando o loop de voz.");
     running = false;
   });
 
-  listener.on("wake", () => {
-    wakeDetected = true;
-  });
+  listener = createListener();
 
-  // Alimenta o Vosk enquanto nao estiver processando um comando
-  audio.stream.on("data", (chunk) => {
+  // Forwarding de audio -> listener (com checagem de processamento)
+  onAudioData = (chunk) => {
     if (!running || processing) return;
+    if (!listener) return;
     listener.write(chunk);
-  });
+  };
+  audio.stream.on("data", onAudioData);
 
-  // Aguarda wake word com polling (evita race condition entre evento e loop)
+  // ─── Aguarda wake com polling ─────────────────────────────────────
   async function waitForWake() {
     while (running && !wakeDetected) {
       await new Promise((r) => setTimeout(r, 100));
@@ -143,9 +196,9 @@ export async function runVoskWakeLoop(opts = {}) {
     return got;
   }
 
-  // ─── Loop principal ────────────────────────────────────────────────
+  // ─── Loop principal ───────────────────────────────────────────────
   while (running) {
-    dim("  (aguardando \"Jarvis\"...)");
+    dim('  (aguardando "Jarvis"...)');
     const gotWake = await waitForWake();
     if (!running) break;
     if (!gotWake) continue;
@@ -153,12 +206,11 @@ export async function runVoskWakeLoop(opts = {}) {
     playWakeSound();
     blank();
     success("Wake word detectada!");
-    dim(`  Sessao ativa por ${Math.round(sessionTimeoutMs / 1000)}s. Fale seus comandos sem dizer "Jarvis".`);
+    dim("  Sessao ativa por " + Math.round(sessionTimeoutMs / 1000) + "s. Fale seus comandos sem dizer \"Jarvis\".");
     blank();
 
     let inSession = true;
 
-    // ─── Sessao: captura comandos seguidos ───────────────────────────
     while (running && inSession) {
       processing = true;
 
@@ -170,7 +222,7 @@ export async function runVoskWakeLoop(opts = {}) {
           minVoiceMs: 300,
         });
       } catch (err) {
-        error(`Erro ao capturar comando: ${err.message}`);
+        error("Erro ao capturar comando: " + err.message);
         processing = false;
         inSession = false;
         break;
@@ -179,14 +231,12 @@ export async function runVoskWakeLoop(opts = {}) {
       processing = false;
       if (!running) break;
 
-      // Sem voz: encerra a sessao por inatividade
       if (!capture.hadVoice) {
         dim("Sessao encerrada por inatividade.");
         inSession = false;
         break;
       }
 
-      // Transcreve
       const transSpin = spinner("Transcrevendo...");
       transSpin.start();
 
@@ -227,26 +277,34 @@ export async function runVoskWakeLoop(opts = {}) {
           confirm: opts.confirm,
         });
       } catch (err) {
-        error(`Erro ao executar comando: ${err.message}`);
+        error("Erro ao executar comando: " + err.message);
       }
 
       if (running && inSession) {
         blank();
-        dim(`  Sessao ativa. Fale o proximo comando (ou aguarde ${Math.round(sessionTimeoutMs / 1000)}s para encerrar).`);
+        dim("  Sessao ativa. Fale o proximo comando (ou aguarde " + Math.round(sessionTimeoutMs / 1000) + "s para encerrar).");
         blank();
       }
     }
 
     if (running) {
       blank();
-      info(`Diga "Jarvis" para ativar de novo.`);
+      info('Diga "Jarvis" para ativar de novo.');
       blank();
     }
   }
 
-  listener.stop();
-  audio.stop();
+  if (listener) {
+    try { listener.stop(); } catch { /* ignore */ }
+  }
+  if (audio) {
+    try { audio.stop(); } catch { /* ignore */ }
+  }
   process.removeListener("SIGINT", onSigint);
   blank();
-  info("Wake word encerrado.");
+  if (audioClosed) {
+    warn("Wake word encerrado (microfone desconectado).");
+  } else {
+    info("Wake word encerrado.");
+  }
 }
