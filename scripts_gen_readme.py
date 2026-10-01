@@ -1,4 +1,7 @@
-# 🤖 Jarvis Dev
+﻿from pathlib import Path
+import json
+
+readme = r'''# 🤖 Jarvis Dev
 
 Assistente de desenvolvimento por linha de comando — commits inteligentes, gestão de branches, Pull Requests do GitHub, integração com Jira, revisão de código com IA, geração de documentação, OCR híbrido e wake word local por voz.
 
@@ -576,3 +579,15 @@ v2.0Primeira versão em uso real pela equipe. Onboarding no servidor, suporte a 
 v2.1Relatórios, OCR híbrido e voz local. jarvis report <issue> e --since (relatório de desenvolvimento), jarvis transcrever (OCR local com RapidOCR + fallback Gemini Vision), jarvis voz com wake word contínua via Vosk (open source, offline), modo sessão (30s sem repetir a wake word), abertura automática em nova aba/janela do terminal, auto-restart do listener, sincronização automática de commits manuais no histórico, e melhorias internas de robustez (retry Gemini, sanitização, cache local)
 📝 Licença
 Projeto pessoal de estudo e automação. Sinta-se livre para usar, modificar e contribuir.
+'''
+
+Path("README.md").write_text(readme, encoding="utf-8")
+print("OK: README.md atualizado (v2.1.0)")
+
+pkg = Path("package.json")
+data = json.loads(pkg.read_text(encoding="utf-8"))
+data["version"] = "2.1.0"
+pkg.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print("OK: package.json atualizado (version: 2.1.0)")
+
+print("Tudo pronto.")
