@@ -36,5 +36,8 @@
     "@secretlint/secretlint-rule-preset-recommend": "^13.0.4",
     "jest": "^30.4.2",
     "secretlint": "^13.0.4"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
