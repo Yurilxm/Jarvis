@@ -14,6 +14,10 @@ import {
   checkVoskDependencies,
 } from './vosk/dependencies.js';
 import {
+  checkPiperDependencies,
+  PIPER_MODELS_DIR,
+} from './piper/dependencies.js';
+import {
   VOSK_MODELS,
   downloadVoskModel,
   formatBytes,
@@ -347,10 +351,148 @@ async function setupVosk(opts = {}) {
  *   voskModel?: 'small-pt'|'full-pt',
  * }} [opts]
  */
+export const PIPER_VOICES = {
+  'pt_BR-faber-medium': {
+    label: 'Faber (masculino, medium, ~63MB) - recomendado, licenca CC0',
+  },
+  'pt_BR-cadu-medium': {
+    label: 'Cadu (masculino, medium, ~63MB)',
+  },
+  'pt_BR-edresson-low': {
+    label: 'Edresson (masculino, low, ~20MB - mais leve)',
+  },
+  'pt_BR-jeff-medium': {
+    label: 'Jeff (masculino, medium, ~63MB)',
+  },
+};
+
+/**
+ * Setup do Piper - instala pacote Python (orientacao) e baixa modelo PT-BR.
+ *
+ * @param {{ piperModel?: string }} [opts]
+ */
+async function setupPiper(opts = {}) {
+  const cfg = readVoiceConfig();
+
+  const deps = checkPiperDependencies(cfg);
+  if (deps.python.ok) {
+    success(`Python com piper-tts OK: ${deps.python.python.label}`);
+  } else {
+    warn('Python ou pacote piper-tts ausente.');
+    console.log(deps.python.reason);
+    blank();
+    dim('  Instale com:');
+    dim('    pip install piper-tts');
+    blank();
+    return { ok: false };
+  }
+
+  const modelKey = opts.piperModel || 'pt_BR-faber-medium';
+  if (!PIPER_VOICES[modelKey]) {
+    error(`Modelo Piper desconhecido: ${modelKey}`);
+    dim('  Disponiveis: ' + Object.keys(PIPER_VOICES).join(', '));
+    return { ok: false };
+  }
+
+  section(`Modelo: ${PIPER_VOICES[modelKey].label}`);
+
+  const modelPath = path.join(PIPER_MODELS_DIR, `${modelKey}.onnx`);
+  const jsonPath = modelPath + '.json';
+  let finalModelPath = null;
+
+  if (fs.existsSync(modelPath) && fs.existsSync(jsonPath)) {
+    success(`Modelo ja instalado: ${modelKey}`);
+    finalModelPath = modelPath;
+  } else {
+    const sp = spinner(`Baixando ${modelKey}...`);
+    sp.start();
+
+    try {
+      const args = [
+        ...deps.python.python.args,
+        '-m', 'piper.download_voices',
+        modelKey,
+        '--data-dir', PIPER_MODELS_DIR,
+      ];
+
+      const res = spawnSync(deps.python.python.cmd, args, {
+        encoding: 'utf-8',
+        timeout: 300000,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          PYTHONUTF8: '1',
+          PYTHONIOENCODING: 'utf-8',
+        },
+      });
+
+      if (res.status !== 0) {
+        const stderr = String(res.stderr || '').trim();
+        const lastLines = stderr.split('\n').slice(-3).join(' | ');
+        sp.fail(`Download falhou: ${lastLines || 'erro desconhecido'}`);
+        return { ok: false };
+      }
+
+      if (!fs.existsSync(modelPath) || !fs.existsSync(jsonPath)) {
+        sp.fail('Download concluiu mas os arquivos do modelo nao foram encontrados.');
+        dim(`  Esperado em: ${PIPER_MODELS_DIR}`);
+        return { ok: false };
+      }
+
+      finalModelPath = modelPath;
+      sp.succeed(`Modelo baixado: ${modelKey}`);
+    } catch (err) {
+      sp.fail(`Falha: ${err.message}`);
+      return { ok: false };
+    }
+  }
+
+  updateVoiceConfig({
+    ttsEngine: 'piper',
+    piperModelPath: finalModelPath,
+    piperPythonCmd: deps.python.python.cmd,
+    piperPythonArgs: deps.python.python.args,
+  });
+
+  return {
+    ok: true,
+    modelPath: finalModelPath,
+    python: deps.python.python,
+  };
+}
+
 export async function runVoiceSetup(opts = {}) {
   printBanner();
 
   const engine = opts.engine || 'whisper';
+
+  if (engine === 'piper') {
+    info('Configuracao do Jarvis Voz - engine Piper (TTS neural local)');
+    blank();
+
+    const piperResult = await setupPiper(opts);
+    blank();
+
+    printBox(
+      `${chalk.bold('engine')}     piper\n` +
+      `${chalk.bold('python')}     ${piperResult.python ? piperResult.python.label : muted('ausente')}\n` +
+      `${chalk.bold('modelo')}     ${piperResult.modelPath ? path.basename(piperResult.modelPath) : muted('nao configurado')}\n` +
+      `${chalk.bold('tts')}        ${piperResult.ok ? 'ativado' : muted('nao configurado')}\n` +
+      `${chalk.bold('config')}     ${path.join(os.homedir(), '.jarvis-dev', 'voice.json')}`,
+      { title: 'resultado', borderColor: 'green' }
+    );
+    blank();
+
+    if (piperResult.ok) {
+      success('Piper configurado.');
+      dim('  Teste: jarvis voz "status do projeto" --run');
+      dim('  Para voltar pro SAPI: edite voice.json e mude ttsEngine para "sapi"');
+    } else {
+      warn('Alguma etapa ficou pendente. Veja os avisos acima.');
+    }
+    blank();
+    return;
+  }
 
   if (engine === 'vosk') {
     info('Configuração do Jarvis Voz — engine Vosk (wake word)');

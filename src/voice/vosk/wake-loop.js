@@ -5,7 +5,12 @@ import { transcribeWithWhisper, DEFAULT_WHISPER_PROMPT } from "../whisper.js";
 import { readVoiceConfig } from "../config.js";
 import { captureCommandPhrase } from "../capture.js";
 import { handleText, printMissingDependencies } from "../handlers.js";
-import { playWakeSound } from "../sound.js";
+import {
+  openSessionTerminal,
+  closeSessionTerminal,
+  cleanupOldSessions,
+} from "../ephemeral-terminal.js";
+import { playWakeSound, speakTextAwait } from "../sound.js";
 import { checkVoiceDependencies } from "../dependencies.js";
 import { checkVoskDependencies } from "./dependencies.js";
 import { createVoskListener } from "./listener.js";
@@ -23,6 +28,28 @@ import {
 } from "../../ui.js";
 
 const SAMPLE_RATE = 16000;
+const GREETING_TAIL_MS = 400;
+
+/**
+ * Aguarda um pequeno delay consumindo os chunks do stream. Usado depois do
+ * greeting pra descartar qualquer audio residual (do proprio TTS ou do
+ * ambiente) antes da captura do comando comecar.
+ *
+ * @param {import('node:stream').Readable} stream
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function drainAudioStream(stream, ms) {
+  return new Promise((resolve) => {
+    if (!stream) return resolve();
+    const noop = () => {};
+    stream.on('data', noop);
+    setTimeout(() => {
+      stream.off('data', noop);
+      resolve();
+    }, ms).unref();
+  });
+}
 const DEFAULT_SESSION_TIMEOUT_MS = 30000;
 const MAX_LISTENER_RESTARTS = 3;
 const RESTART_BACKOFF_MS = 2000;
@@ -86,6 +113,9 @@ export async function runVoskWakeLoop(opts = {}) {
   info('Diga "Jarvis" para ativar. Ctrl+C para sair.');
   dim("  Depois de ativado, continua escutando por " + Math.round(sessionTimeoutMs / 1000) + "s sem precisar dizer \"Jarvis\" de novo.");
   blank();
+
+  // Limpa sessoes antigas (logs de execucoes anteriores)
+  cleanupOldSessions();
 
   let running = true;
   const onSigint = () => {
@@ -203,7 +233,32 @@ export async function runVoskWakeLoop(opts = {}) {
     if (!running) break;
     if (!gotWake) continue;
 
-    playWakeSound();
+    const shouldGreet = cfg.greetOnWake !== false;
+    const greeting = cfg.wakeGreeting || "Oi Yuri, pode falar";
+
+    if (shouldGreet && greeting) {
+      processing = true;
+      try {
+        await speakTextAwait(greeting);
+        await drainAudioStream(audio.stream, GREETING_TAIL_MS);
+      } catch {
+        // silencioso
+      } finally {
+        processing = false;
+        wakeDetected = false;
+      }
+    } else {
+      playWakeSound();
+    }
+
+    // Abre janela minimizada persistente da sessao (se configurado)
+    if (cfg.voiceOutputMode === "session-window") {
+      const opened = openSessionTerminal();
+      if (!opened.ok) {
+        dim("  (nao foi possivel abrir a janela da sessao: " + (opened.reason || "erro") + ")");
+      }
+    }
+
     blank();
     success("Wake word detectada!");
     dim("  Sessao ativa por " + Math.round(sessionTimeoutMs / 1000) + "s. Fale seus comandos sem dizer \"Jarvis\".");
@@ -234,6 +289,24 @@ export async function runVoskWakeLoop(opts = {}) {
       if (!capture.hadVoice) {
         dim("Sessao encerrada por inatividade.");
         inSession = false;
+
+        const farewell = cfg.wakeFarewell || "Estou aqui se precisar";
+        if (shouldGreet && farewell) {
+          processing = true;
+          try {
+            await speakTextAwait(farewell);
+          } catch {
+            // silencioso
+          } finally {
+            processing = false;
+          }
+        }
+
+        // Fecha a janela efemera da sessao
+        if (cfg.voiceOutputMode === "session-window") {
+          closeSessionTerminal();
+        }
+
         break;
       }
 
@@ -301,6 +374,23 @@ export async function runVoskWakeLoop(opts = {}) {
     try { audio.stop(); } catch { /* ignore */ }
   }
   process.removeListener("SIGINT", onSigint);
+
+  if (!audioClosed && cfg.greetOnWake !== false) {
+    const farewell = cfg.wakeFarewell || "Estou aqui se precisar";
+    if (farewell) {
+      try {
+        await speakTextAwait(farewell);
+      } catch {
+        // silencioso
+      }
+    }
+  }
+
+  // Fecha a janela efemera da sessao
+  if (cfg.voiceOutputMode === "session-window") {
+    closeSessionTerminal();
+  }
+
   blank();
   if (audioClosed) {
     warn("Wake word encerrado (microfone desconectado).");

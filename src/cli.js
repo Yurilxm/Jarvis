@@ -179,7 +179,13 @@ async function main() {
     const model = modelIdx !== -1 ? allArgs[modelIdx + 1] : undefined;
 
     const engineIdx = allArgs.indexOf('--engine');
-    const engine = engineIdx !== -1 ? allArgs[engineIdx + 1] : undefined;
+    let engine = engineIdx !== -1 ? allArgs[engineIdx + 1] : undefined;
+
+    const validEngines = ['whisper', 'vosk', 'piper'];
+    if (engine && !validEngines.includes(engine)) {
+      warn(`Engine desconhecida: ${engine}. Use: ${validEngines.join(' | ')}`);
+      engine = undefined;
+    }
 
     const voskModelIdx = allArgs.indexOf('--vosk-model');
     const voskModel = voskModelIdx !== -1 ? allArgs[voskModelIdx + 1] : undefined;
@@ -329,6 +335,8 @@ function showHelpText() {
       ['jarvis transcrever <img> --ia', 'Força transcrição via Gemini Vision'],
       ['jarvis voz "frase"', 'Simula reconhecimento de voz'],
       ['jarvis voz --setup', 'Baixa e configura whisper.cpp + modelo'],
+      ['jarvis voz --setup --engine vosk', 'Configura wake word (Vosk, offline)'],
+      ['jarvis voz --setup --engine piper', 'Configura TTS neural (Piper, offline)'],
       ['jarvis voz --ouvir', 'Grava do microfone e transcreve (local)'],
       ['jarvis voz --config', 'Configura caminhos e microfone'],
       ['jarvis voz --listar-microfones', 'Lista microfones disponíveis (Windows)'],
