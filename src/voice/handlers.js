@@ -12,6 +12,7 @@ import {
   cleanupOldScripts,
 } from "./terminal-output.js";
 import { appendToTerminal } from "./ephemeral-terminal.js";
+import { summarizeForSpeech } from "./tts-summaries.js";
 import {
   printBox,
   info,
@@ -158,9 +159,10 @@ async function executeInline(result) {
     appendToTerminal(header + lines.join("\n"));
   }
 
-  // TTS — fala o resultado capturado
+  // TTS — fala o resumo do intent (ou o output cru como fallback)
   if (cfg.ttsEnabled) {
-    const speech = buildSpeechFromLines(lines);
+    const summary = summarizeForSpeech(result.intent, result.argv, lines, cfg);
+    const speech = summary || buildSpeechFromLines(lines);
     if (speech) {
       speakText(speech, { maxChars: cfg.ttsMaxChars ?? 300 });
     }
