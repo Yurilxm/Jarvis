@@ -10,7 +10,7 @@ import {
   closeSessionTerminal,
   cleanupOldSessions,
 } from "../ephemeral-terminal.js";
-import { playWakeSound, speakTextAwait } from "../sound.js";
+import { playWakeSound, speakTextAwait, speakTextControllable } from "../sound.js";
 import { checkVoiceDependencies } from "../dependencies.js";
 import { checkVoskDependencies } from "./dependencies.js";
 import { createVoskListener } from "./listener.js";
@@ -129,6 +129,7 @@ export async function runVoskWakeLoop(opts = {}) {
   let listener = null;
   let wakeDetected = false;
   let processing = false;
+  let ttsActive = false;
   let audioClosed = false;
   let listenerRestarts = 0;
   let onAudioData = null;
@@ -210,7 +211,15 @@ export async function runVoskWakeLoop(opts = {}) {
 
   // Forwarding de audio -> listener (com checagem de processamento)
   onAudioData = (chunk) => {
-    if (!running || processing) return;
+    if (!running) return;
+    // Durante o TTS, mantemos forwarding ligado pra detectar cancelamento.
+    // O Vosk esta em modo CANCEL nesse periodo, entao so responde a
+    // "jarvis para/chega/etc" — nao dispara wake.
+    if (ttsActive) {
+      if (listener) listener.write(chunk);
+      return;
+    }
+    if (processing) return;
     if (!listener) return;
     listener.write(chunk);
   };
@@ -238,12 +247,22 @@ export async function runVoskWakeLoop(opts = {}) {
 
     if (shouldGreet && greeting) {
       processing = true;
+      ttsActive = true;
+      listener.setMode("cancel");
+
+      const ctl = speakTextControllable(greeting);
+      const onCancel = () => { ctl.cancel(); };
+      listener.on("cancel", onCancel);
+
       try {
-        await speakTextAwait(greeting);
+        await ctl.promise;
         await drainAudioStream(audio.stream, GREETING_TAIL_MS);
       } catch {
         // silencioso
       } finally {
+        listener.off("cancel", onCancel);
+        listener.setMode("wake");
+        ttsActive = false;
         processing = false;
         wakeDetected = false;
       }
@@ -293,11 +312,21 @@ export async function runVoskWakeLoop(opts = {}) {
         const farewell = cfg.wakeFarewell || "Estou aqui se precisar";
         if (shouldGreet && farewell) {
           processing = true;
+          ttsActive = true;
+          listener.setMode("cancel");
+
+          const ctl = speakTextControllable(farewell);
+          const onCancel = () => { ctl.cancel(); };
+          listener.on("cancel", onCancel);
+
           try {
-            await speakTextAwait(farewell);
+            await ctl.promise;
           } catch {
             // silencioso
           } finally {
+            listener.off("cancel", onCancel);
+            listener.setMode("wake");
+            ttsActive = false;
             processing = false;
           }
         }

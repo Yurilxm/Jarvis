@@ -502,6 +502,268 @@ async function speakWithSapiAwait(prepared, opts = {}) {
 }
 
 /**
+ * Variante CONTROLavel de speakText. Retorna um objeto com:
+ *   - promise: resolve quando o audio termina (ou foi cancelado)
+ *   - cancel:  funcao que mata o ffplay imediatamente
+ *   - isCancelled: consulta o estado
+ *
+ * Usado pelo wake-loop pra permitir "jarvis para" durante a fala.
+ * Reaproveita a mesma logica de Piper/SAPI do speakText, mas expoe o
+ * handle do processo filho pra ser morto.
+ *
+ * @param {string} text
+ * @param {{ voice?: string, rate?: number, maxChars?: number }} [opts]
+ * @returns {{ promise: Promise<boolean>, cancel: () => void, isCancelled: () => boolean }}
+ */
+export function speakTextControllable(text, opts = {}) {
+  const state = {
+    cancelled: false,
+    ffplayChild: null,
+  };
+
+  const cancel = () => {
+    if (state.cancelled) return;
+    state.cancelled = true;
+    if (state.ffplayChild) {
+      try { state.ffplayChild.kill("SIGKILL"); } catch { /* ignore */ }
+      state.ffplayChild = null;
+    }
+  };
+
+  const promise = (async () => {
+    if (process.platform !== "win32") return false;
+    const cfg = readVoiceConfig();
+    if (cfg.ttsEnabled === false) return false;
+    if (state.cancelled) return false;
+
+    const maxChars = opts.maxChars ?? cfg.ttsMaxChars ?? 300;
+    const prepared = prepareForSpeech(text, maxChars);
+    if (!prepared) return false;
+    if (state.cancelled) return false;
+
+    const engine = (cfg.ttsEngine || "sapi").toLowerCase();
+    if (engine === "piper") {
+      return await speakWithPiperControllable(prepared, state, opts);
+    }
+    return await speakWithSapiControllable(prepared, state, opts);
+  })();
+
+  return {
+    promise,
+    cancel,
+    isCancelled: () => state.cancelled,
+  };
+}
+
+/**
+ * Piper controlavel: gera o WAV e toca com ffplay controlando o child.
+ * @param {string} prepared
+ * @param {{ cancelled: boolean, ffplayChild: object|null }} state
+ * @param {object} opts
+ * @returns {Promise<boolean>}
+ */
+async function speakWithPiperControllable(prepared, state, opts = {}) {
+  const cfg = readVoiceConfig();
+
+  const deps = checkPiperDependencies(cfg);
+  if (!deps.ok) {
+    console.warn("[jarvis voz] Piper nao esta pronto; usando SAPI como fallback.");
+    return await speakWithSapiControllable(prepared, state, opts);
+  }
+
+  const wavPath = path.join(
+    os.tmpdir(),
+    "jarvis-voz",
+    `tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.wav`
+  );
+
+  try {
+    if (!fs.existsSync(path.dirname(wavPath))) {
+      fs.mkdirSync(path.dirname(wavPath), { recursive: true });
+    }
+
+    const args = [
+      ...deps.python.python.args,
+      "-m", "piper",
+      "-m", deps.model.path,
+      "-f", wavPath,
+      prepared,
+    ];
+
+    const genResult = spawnSync(deps.python.python.cmd, args, {
+      timeout: 20000,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        PYTHONUTF8: "1",
+        PYTHONIOENCODING: "utf-8",
+      },
+    });
+
+    if (state.cancelled) {
+      try { fs.unlinkSync(wavPath); } catch { /* ignore */ }
+      return false;
+    }
+
+    if (genResult.status !== 0 || !fs.existsSync(wavPath)) {
+      console.warn("[jarvis voz] Piper falhou ao gerar o audio; usando SAPI.");
+      return await speakWithSapiControllable(prepared, state, opts);
+    }
+
+    const played = await playWavControllable(wavPath, state);
+
+    setTimeout(() => {
+      try { fs.unlinkSync(wavPath); } catch { /* ignore */ }
+    }, 5000).unref();
+
+    return played;
+  } catch (err) {
+    console.warn("[jarvis voz] Erro ao invocar Piper: " + err.message);
+    return await speakWithSapiControllable(prepared, state, opts);
+  }
+}
+
+/**
+ * Toca um WAV controlando o child process (pra permitir cancel).
+ * @param {string} wavPath
+ * @param {{ cancelled: boolean, ffplayChild: object|null }} state
+ * @returns {Promise<boolean>}
+ */
+function playWavControllable(wavPath, state) {
+  return new Promise((resolve) => {
+    const ffplay = findInPath("ffplay");
+    if (!ffplay) {
+      console.warn("[jarvis voz] ffplay nao encontrado; sem audio.");
+      return resolve(false);
+    }
+
+    let resolved = false;
+    const done = (val) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(val);
+    };
+
+    let child;
+    try {
+      child = spawn(
+        ffplay,
+        ["-nodisp", "-autoexit", "-loglevel", "quiet", wavPath],
+        { stdio: "ignore", windowsHide: true }
+      );
+      state.ffplayChild = child;
+    } catch (err) {
+      console.warn("[jarvis voz] Falha ao invocar ffplay: " + err.message);
+      return done(false);
+    }
+
+    const t = setTimeout(() => {
+      try { child.kill("SIGKILL"); } catch { /* ignore */ }
+      done(false);
+    }, 30000);
+    t.unref();
+
+    child.on("exit", () => {
+      clearTimeout(t);
+      state.ffplayChild = null;
+      done(!state.cancelled);
+    });
+    child.on("error", () => {
+      clearTimeout(t);
+      state.ffplayChild = null;
+      done(false);
+    });
+  });
+}
+
+/**
+ * SAPI controlavel: roda o PowerShell e mata se cancelado.
+ * @param {string} prepared
+ * @param {{ cancelled: boolean, ffplayChild: object|null }} state
+ * @param {object} opts
+ * @returns {Promise<boolean>}
+ */
+async function speakWithSapiControllable(prepared, state, opts = {}) {
+  const cfg = readVoiceConfig();
+  const voice = opts.voice || cfg.ttsVoice || "";
+  const rate = opts.rate ?? cfg.ttsRate ?? 1;
+  const psRate = Math.max(-10, Math.min(10, Math.round((rate - 1) * 5)));
+
+  const voiceLine = voice
+    ? `try { $synth.SelectVoice('${voice.replace(/'/g, "''")}') } catch { }`
+    : "";
+
+  const script = [
+    "Add-Type -AssemblyName System.Speech",
+    "$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer",
+    voiceLine,
+    `$synth.Rate = ${psRate}`,
+    `$synth.Speak('${prepared.replace(/'/g, "''")}')`,
+    "$synth.Dispose()",
+  ].filter(Boolean).join("\r\n");
+
+  const scriptPath = path.join(
+    os.tmpdir(),
+    "jarvis-voz",
+    `tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.ps1`
+  );
+
+  try {
+    if (!fs.existsSync(path.dirname(scriptPath))) {
+      fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+    }
+    fs.writeFileSync(scriptPath, script, "utf-8");
+
+    const ok = await new Promise((resolve) => {
+      let resolved = false;
+      const done = (val) => {
+        if (resolved) return;
+        resolved = true;
+        resolve(val);
+      };
+
+      let child;
+      try {
+        child = spawn(
+          "powershell.exe",
+          ["-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", scriptPath],
+          { stdio: "ignore", windowsHide: true }
+        );
+        state.ffplayChild = child;
+      } catch {
+        return done(false);
+      }
+
+      const t = setTimeout(() => {
+        try { child.kill("SIGKILL"); } catch { /* ignore */ }
+        done(false);
+      }, 30000);
+      t.unref();
+
+      child.on("exit", () => {
+        clearTimeout(t);
+        state.ffplayChild = null;
+        done(!state.cancelled);
+      });
+      child.on("error", () => {
+        clearTimeout(t);
+        state.ffplayChild = null;
+        done(false);
+      });
+    });
+
+    setTimeout(() => {
+      try { fs.unlinkSync(scriptPath); } catch { /* ignore */ }
+    }, 60000).unref();
+
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Verifica se uma voz especifica existe no sistema (SAPI).
  * @param {string} voiceName
  * @returns {boolean}

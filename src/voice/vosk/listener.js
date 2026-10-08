@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 
 const WAKE_MARKER = "__WAKE__";
+const CANCEL_MARKER = "__CANCEL__";
 const READY_MARKER = "READY";
 const STOPPED_MARKER = "STOPPED";
 
@@ -16,6 +17,7 @@ export function parseVoskLine(line) {
   const trimmed = String(line || "").trim();
   if (!trimmed) return null;
   if (trimmed === WAKE_MARKER) return { type: "wake" };
+  if (trimmed === CANCEL_MARKER) return { type: "cancel" };
   if (trimmed === READY_MARKER) return { type: "ready" };
   if (trimmed === STOPPED_MARKER) return { type: "stopped" };
   return { type: "log", text: trimmed };
@@ -77,6 +79,7 @@ export function createVoskListener(options) {
       const parsed = parseVoskLine(raw);
       if (!parsed) continue;
       if (parsed.type === "wake") emitter.emit("wake");
+      else if (parsed.type === "cancel") emitter.emit("cancel");
       else if (parsed.type === "ready") {
         ready = true;
         emitter.emit("ready");
@@ -105,14 +108,28 @@ export function createVoskListener(options) {
   return {
     on: (event, cb) => emitter.on(event, cb),
     once: (event, cb) => emitter.once(event, cb),
+    off: (event, cb) => emitter.off(event, cb),
 
     write(chunk) {
       if (stopped) return;
       if (!child.stdin || !child.stdin.writable) return;
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       try {
-        child.stdin.write(chunk);
+        child.stdin.write(`LEN:${buf.length}\n`);
+        child.stdin.write(buf);
       } catch {
         // ignora — processo pode ter encerrado entre o check e o write
+      }
+    },
+
+    setMode(mode) {
+      if (stopped) return;
+      if (!child.stdin || !child.stdin.writable) return;
+      const m = (mode === "cancel") ? "cancel" : "wake";
+      try {
+        child.stdin.write(`CMD:${m}\n`);
+      } catch {
+        // ignora
       }
     },
 
