@@ -10,6 +10,12 @@
 export async function dispatchIntent(argv) {
   const [cmd, sub, arg] = argv || [];
 
+  // Marcador especial: encerrar sessao de voz. O wake-loop reconhece
+  // o retorno 'cancel' e fecha a sessao com despedida.
+  if (cmd === '__cancel__') {
+    return 'cancel';
+  }
+
   // ─── Simples ─────────────────────────────────────────────────────────
   if (cmd === 'today') {
     const { runToday } = await import('../commands/today.js');

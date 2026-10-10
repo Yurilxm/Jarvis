@@ -175,6 +175,16 @@ async function main() {
     const hasInstallStartup = allArgs.includes('--instalar-startup');
     const hasRemoveStartup = allArgs.includes('--remover-startup');
 
+    // --pausar [duracao] / --voltar / --status
+    const pauseIdx = allArgs.indexOf('--pausar');
+    let voicePause;
+    if (pauseIdx !== -1) {
+      const next = allArgs[pauseIdx + 1];
+      voicePause = (next && !next.startsWith('--')) ? next : true;
+    }
+    const hasResume = allArgs.includes('--voltar');
+    const hasVoiceStatus = allArgs.includes('--status');
+
     const modelIdx = allArgs.indexOf('--model');
     const model = modelIdx !== -1 ? allArgs[modelIdx + 1] : undefined;
 
@@ -211,6 +221,9 @@ async function main() {
       voskModel,
       installStartup: hasInstallStartup,
       removeStartup: hasRemoveStartup,
+      voicePause,
+      voiceResume: hasResume,
+      voiceStatus: hasVoiceStatus,
     });
   }
   else if (command === 'review') {

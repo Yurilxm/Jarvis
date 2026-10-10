@@ -144,6 +144,10 @@ async function executeInline(result) {
     return;
   }
 
+  if (ok === "cancel") {
+    return "cancel";
+  }
+
   if (!ok) {
     warn("Comando '" + argvStr + "' ainda nao e suportado no modo voz.");
     dim("  (os comandos suportados estao listados no topo do dispatch.js)");
@@ -234,7 +238,7 @@ export async function executeIntent(result) {
   // session-window roda inline (mesmo processo) mas escreve no terminal efemero
   info("Executando: jarvis " + argvStr);
   blank();
-  await executeInline(result);
+  return await executeInline(result);
 }
 
 /**
@@ -247,19 +251,9 @@ export async function handleText(text, opts = {}) {
   const result = matchIntent(text);
 
   if (!result.intent) {
-    warn("Nenhum comando reconhecido.");
-    blank();
-    dim("Tente frases como:");
-    dim("  . \"o que eu tenho hoje\"");
-    dim("  . \"lista do jira\"");
-    dim("  . \"status do projeto\"");
-    dim("  . \"relatorio da task SDG-71\"");
-    blank();
-
-    const cfg = readVoiceConfig();
-    if (cfg.ttsEnabled) {
-      speakText("Não reconheci nenhum comando.");
-    }
+    // Silencioso de proposito: nao fala no TTS. Em modo voz, falar
+    // "nao reconheci" a cada ruido de fundo e' pior que ficar calado.
+    dim("[voz] Nenhum comando reconhecido (silenciado).");
     return;
   }
 
@@ -294,7 +288,7 @@ export async function handleText(text, opts = {}) {
     return;
   }
 
-  await executeIntent(result);
+  return await executeIntent(result);
 }
 
 /**
