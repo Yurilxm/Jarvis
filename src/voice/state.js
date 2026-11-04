@@ -91,6 +91,54 @@ export function parseDuration(str) {
  * @param {number} until
  * @returns {string}
  */
+const WORD_NUMS = {
+  um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5,
+  seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, onze: 11, doze: 12,
+  treze: 13, catorze: 14, quatorze: 14, quinze: 15,
+  vinte: 20, trinta: 30, quarenta: 40, cinquenta: 50,
+  sessenta: 60, setenta: 70, oitenta: 80, noventa: 90,
+};
+
+/**
+ * Interpreta duracao natural em PT-BR a partir de uma frase.
+ * Ex: "pausa por 30 minutos" -> 1800000
+ *     "pausa por uma hora"  -> 3600000
+ *     "pausa por meia hora" -> 1800000
+ *     "pausa"               -> null (indefinido)
+ *
+ * @param {string} text
+ * @returns {number|null} ms, ou null se nao houver duracao
+ */
+export function parseVoicePauseDuration(text) {
+  if (!text) return null;
+  const norm = String(text).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  // "hora e meia" / "uma hora e meia"
+  if (/(uma\s+)?hora\s+e\s+meia/.test(norm)) return 90 * 60 * 1000;
+
+  // "meia hora"
+  if (/meia\s+hora/.test(norm)) return 30 * 60 * 1000;
+
+  // Numerico: "2 horas" / "30 minutos" / "12h" / "30min"
+  const hMatch = norm.match(/(\d+)\s*(?:h\b|hora|horas)/);
+  if (hMatch) return Number(hMatch[1]) * 60 * 60 * 1000;
+
+  const mMatch = norm.match(/(\d+)\s*(?:min\b|minuto|minutos|m\b)/);
+  if (mMatch) return Number(mMatch[1]) * 60 * 1000;
+
+  // Palavra numerica + hora/minuto
+  const words = norm.split(/\s+/);
+  for (let i = 0; i < words.length; i++) {
+    const n = WORD_NUMS[words[i]];
+    if (n == null) continue;
+    const next = words[i + 1] || "";
+    if (/^(hora|horas|h)$/.test(next)) return n * 60 * 60 * 1000;
+    if (/^(minuto|minutos|min|m)$/.test(next)) return n * 60 * 1000;
+  }
+
+  return null;
+}
+
 export function formatRemaining(until) {
   const ms = Math.max(0, until - Date.now());
   const sec = Math.floor(ms / 1000);

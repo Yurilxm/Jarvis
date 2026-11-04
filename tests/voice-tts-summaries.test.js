@@ -145,3 +145,72 @@ describe('tts-summaries \u2014 fallback', () => {
     expect(summarizeForSpeech('status', ['status'], [])).toBeNull();
   });
 });
+
+describe('tts-summaries - commit / pull / history', () => {
+  it('commit + push', () => {
+    const lines = ['Commit realizado com sucesso!', 'Push realizado com sucesso!'];
+    expect(summarizeForSpeech('commit', ['commit'], lines)).toMatch(/commit feito e enviado/i);
+  });
+
+  it('commit so', () => {
+    const lines = ['Commit realizado com sucesso!'];
+    expect(summarizeForSpeech('commit', ['commit'], lines)).toMatch(/^Commit feito/);
+  });
+
+  it('pull already up to date', () => {
+    const lines = ['Repositorio atualizado!', 'Already up to date.'];
+    expect(summarizeForSpeech('pull', ['pull'], lines)).toMatch(/ja estava atualizado/i);
+  });
+
+  it('pull com N arquivos', () => {
+    const lines = ['Repositorio atualizado!', '3 files changed, 42 insertions(+)'];
+    const r = summarizeForSpeech('pull', ['pull'], lines);
+    expect(r).toMatch(/3/);
+    expect(r).toMatch(/arquivos/);
+  });
+
+  it('history conta eventos', () => {
+    const lines = ['historico · 15 evento(s)', '...'];
+    const r = summarizeForSpeech('history', ['history'], lines);
+    expect(r).toMatch(/15/);
+  });
+
+  it('history vazio', () => {
+    const lines = ['Nenhum evento ainda.'];
+    const r = summarizeForSpeech('history', ['history'], lines);
+    expect(r).toMatch(/Nenhum/);
+  });
+});
+
+describe('tts-summaries - docs / review / undo / release', () => {
+  it('docs README', () => {
+    const lines = ['README.md salvo com sucesso!'];
+    expect(summarizeForSpeech('docs-readme', ['docs'], lines)).toMatch(/Readme/i);
+  });
+
+  it('docs CHANGELOG', () => {
+    const lines = ['CHANGELOG.md salvo com sucesso!'];
+    expect(summarizeForSpeech('docs-changelog', ['docs', 'changelog'], lines)).toMatch(/Changelog/i);
+  });
+
+  it('review concluido', () => {
+    const lines = ['revisao de codigo', 'Achei 3 pontos...'];
+    expect(summarizeForSpeech('review', ['review'], lines)).toMatch(/Revisao concluida/i);
+  });
+
+  it('undo desfeito', () => {
+    const lines = ['Commit desfeito com sucesso.'];
+    expect(summarizeForSpeech('undo', ['undo'], lines)).toMatch(/desfeito/i);
+  });
+
+  it('release com versao', () => {
+    const lines = ['Versao 2.2.0 criada com sucesso.'];
+    const r = summarizeForSpeech('release', ['release'], lines);
+    expect(r).toMatch(/2\.2\.0/);
+  });
+
+  it('release fallback', () => {
+    const lines = ['Release criada!'];
+    expect(summarizeForSpeech('release', ['release'], lines)).toMatch(/Nova versao/i);
+  });
+});

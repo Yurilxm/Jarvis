@@ -69,6 +69,42 @@ export function normalize(text) {
 }
 
 /**
+ * Palavras de ligacao em PT-BR que nao carregam intencao. Ignoradas
+ * no fuzzy matching pra dar robustez a transcricoes que cortam ou
+ * trocam artigos.
+ */
+export const STOPWORDS_PT = new Set([
+  'a', 'o', 'as', 'os', 'um', 'uma', 'uns', 'umas',
+  'de', 'do', 'da', 'dos', 'das',
+  'me', 'te', 'se', 'lhe', 'nos', 'vos',
+  'que', 'qual', 'quais',
+  'pra', 'para', 'por', 'com', 'sem', 'em', 'no', 'na',
+  'e', 'ou', 'mas',
+  'ai', 'entao', 'tipo', 'so', 'apenas', 'ate',
+  'favor', 'gentileza',
+  'meu', 'minha', 'meus', 'minhas', 'teu', 'tua',
+  'este', 'esta', 'esse', 'essa', 'isso', 'aquilo',
+  'ja', 'ainda', 'agora', 'depois', 'antes',
+  'bem', 'muito', 'pouco', 'mais', 'menos',
+  'todo', 'toda', 'todos', 'todas',
+]);
+
+/**
+ * Tokeniza pra fuzzy: split simples, mantem tokens >= 2 chars e nao
+ * stopwords.
+ *
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function tokenize(text) {
+  const norm = normalize(text);
+  if (!norm) return [];
+  return norm
+    .split(/\s+/)
+    .filter((t) => t.length >= 2 && !STOPWORDS_PT.has(t));
+}
+
+/**
  * Extrai uma chave de issue do Jira (ex: SDG-71) de um texto.
  * @param {string} text
  * @returns {string|null}
@@ -105,14 +141,63 @@ const CONTEXT_BONUS = 0.5;
  * Acha a frase mais longa que casa no texto.
  */
 function findLongestPhraseMatch(normalized, intents) {
+  const textTokens = new Set(tokenize(normalized));
+  const FUZZY_THRESHOLD = 0.7;
+
   let best = null;
+
   for (const intent of intents) {
     for (const phrase of intent.phrases) {
       const normPhrase = normalize(phrase);
       if (!normPhrase) continue;
-      if (!normalized.includes(normPhrase)) continue;
-      if (!best || normPhrase.length > best.normPhrase.length) {
-        best = { intent, phrase, normPhrase };
+
+      // 1) Match exato (substring) — sempre vence
+      if (normalized.includes(normPhrase)) {
+        const candidate = {
+          intent,
+          phrase,
+          normPhrase,
+          exact: true,
+          fuzzy: false,
+          fuzzyRatio: 1,
+        };
+        if (
+          !best ||
+          (!best.exact && candidate.exact) ||
+          (candidate.exact === best.exact &&
+            normPhrase.length > best.normPhrase.length)
+        ) {
+          best = candidate;
+        }
+        continue;
+      }
+
+      // 2) Fuzzy por tokens (>=70% dos tokens nao-stopword da phrase
+      //    precisam estar no texto)
+      const phraseTokens = tokenize(phrase);
+      if (phraseTokens.length < 2) continue;
+      const hits = phraseTokens.filter((t) => textTokens.has(t)).length;
+      const ratio = hits / phraseTokens.length;
+      if (ratio >= FUZZY_THRESHOLD) {
+        // Fuzzy so vence se nao tiver um exato ainda OU se a phrase for
+        // substancialmente mais especifica (mais tokens significativos).
+        if (
+          !best ||
+          (!best.exact &&
+            (ratio > best.fuzzyRatio ||
+              (ratio === best.fuzzyRatio &&
+                phraseTokens.length > (best.fuzzyTokens || 0))))
+        ) {
+          best = {
+            intent,
+            phrase,
+            normPhrase,
+            exact: false,
+            fuzzy: true,
+            fuzzyRatio: ratio,
+            fuzzyTokens: phraseTokens.length,
+          };
+        }
       }
     }
   }
@@ -124,7 +209,14 @@ function findLongestPhraseMatch(normalized, intents) {
  */
 function countMatches(normalized, items) {
   if (!items || items.length === 0) return 0;
-  return items.filter((item) => normalized.includes(normalize(item))).length;
+  return items.filter((item) => {
+    const norm = normalize(item);
+    if (!norm) return false;
+    // Ignora itens que sao so stopwords ("de", "do", "a"...) — evita
+    // casar qualquer texto por conter preposicoes comuns.
+    if (STOPWORDS_PT.has(norm)) return false;
+    return normalized.includes(norm);
+  }).length;
 }
 
 /**

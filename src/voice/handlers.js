@@ -148,6 +148,10 @@ async function executeInline(result) {
     return "cancel";
   }
 
+  if (ok === "pause") {
+    return "pause";
+  }
+
   if (!ok) {
     warn("Comando '" + argvStr + "' ainda nao e suportado no modo voz.");
     dim("  (os comandos suportados estao listados no topo do dispatch.js)");

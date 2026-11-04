@@ -30,6 +30,7 @@ import unicodedata
 SAMPLE_RATE = 16000
 WAKE_MARKER = "__WAKE__"
 CANCEL_MARKER = "__CANCEL__"
+RESUME_MARKER = "__RESUME__"
 DEBUG = os.environ.get("JARVIS_VOSK_DEBUG") == "1"
 
 WAKE_VARIANTS = [
@@ -49,6 +50,16 @@ WAKE_VARIANTS = [
     "jardim",
     "jardins",
     "jarbas",
+]
+
+RESUME_PHRASES = [
+    "volta",
+    "voltar",
+    "acorda",
+    "acorde",
+    "retoma",
+    "retornar",
+    "voltou",
 ]
 
 CANCEL_WORDS = [
@@ -88,6 +99,13 @@ def _has_any(text, variants):
 
 def is_wake_match(text):
     return _has_any(normalize_text(text), WAKE_VARIANTS)
+
+
+def is_resume_match(text):
+    norm = normalize_text(text)
+    if not _has_any(norm, WAKE_VARIANTS):
+        return False
+    return _has_any(norm, RESUME_PHRASES)
 
 
 def is_cancel_match(text):
@@ -153,6 +171,10 @@ def main():
             if not is_wake_match(text):
                 return
             marker = WAKE_MARKER
+        elif mode == "resume":
+            if not is_resume_match(text):
+                return
+            marker = RESUME_MARKER
         else:  # cancel
             if not is_cancel_match(text):
                 return
@@ -176,7 +198,7 @@ def main():
 
         if line.startswith("CMD:"):
             new_mode = line[4:].strip().lower()
-            if new_mode in ("wake", "cancel"):
+            if new_mode in ("wake", "cancel", "resume"):
                 mode = new_mode
             continue
 

@@ -16,6 +16,10 @@ export async function dispatchIntent(argv) {
     return 'cancel';
   }
 
+  if (cmd === '__pause__') {
+    return 'pause';
+  }
+
   // ─── Simples ─────────────────────────────────────────────────────────
   if (cmd === 'today') {
     const { runToday } = await import('../commands/today.js');

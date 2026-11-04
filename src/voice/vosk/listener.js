@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 
 const WAKE_MARKER = "__WAKE__";
 const CANCEL_MARKER = "__CANCEL__";
+const RESUME_MARKER = "__RESUME__";
 const READY_MARKER = "READY";
 const STOPPED_MARKER = "STOPPED";
 
@@ -18,6 +19,7 @@ export function parseVoskLine(line) {
   if (!trimmed) return null;
   if (trimmed === WAKE_MARKER) return { type: "wake" };
   if (trimmed === CANCEL_MARKER) return { type: "cancel" };
+  if (trimmed === RESUME_MARKER) return { type: "resume" };
   if (trimmed === READY_MARKER) return { type: "ready" };
   if (trimmed === STOPPED_MARKER) return { type: "stopped" };
   return { type: "log", text: trimmed };
@@ -80,6 +82,7 @@ export function createVoskListener(options) {
       if (!parsed) continue;
       if (parsed.type === "wake") emitter.emit("wake");
       else if (parsed.type === "cancel") emitter.emit("cancel");
+      else if (parsed.type === "resume") emitter.emit("resume");
       else if (parsed.type === "ready") {
         ready = true;
         emitter.emit("ready");
@@ -125,7 +128,7 @@ export function createVoskListener(options) {
     setMode(mode) {
       if (stopped) return;
       if (!child.stdin || !child.stdin.writable) return;
-      const m = (mode === "cancel") ? "cancel" : "wake";
+      const m = (mode === "cancel" || mode === "resume") ? mode : "wake";
       try {
         child.stdin.write(`CMD:${m}\n`);
       } catch {

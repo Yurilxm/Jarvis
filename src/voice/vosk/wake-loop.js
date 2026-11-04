@@ -13,7 +13,7 @@ import {
 import { playWakeSound, speakTextAwait, speakTextControllable } from "../sound.js";
 import { checkVoiceDependencies } from "../dependencies.js";
 import { checkVoskDependencies } from "./dependencies.js";
-import { readVoiceState, formatRemaining } from "../state.js";
+import { readVoiceState, formatRemaining, parseVoicePauseDuration, pauseVoice, resumeVoice } from "../state.js";
 import { buildGreeting } from "../greeting.js";
 import { createVoskListener } from "./listener.js";
 import {
@@ -133,6 +133,8 @@ export async function runVoskWakeLoop(opts = {}) {
   let processing = false;
   let ttsActive = false;
   let audioClosed = false;
+  let pauseModeActive = false;
+  let justResumedByVoice = false;
   let listenerRestarts = 0;
   let onAudioData = null;
 
@@ -252,10 +254,54 @@ export async function runVoskWakeLoop(opts = {}) {
     // alguem rodar "jarvis voz --voltar".
     const st = readVoiceState();
     if (st.paused) {
-      const suffix = st.until ? " (ate " + formatRemaining(st.until) + ")" : " (indefinido)";
-      dim("  (pausado" + suffix + ", aguardando 'jarvis voz --voltar')");
-      await new Promise((r) => setTimeout(r, 5000));
+      if (!pauseModeActive) {
+        listener.setMode("resume");
+        pauseModeActive = true;
+        const suffix = st.until ? " (ate " + formatRemaining(st.until) + ")" : " (indefinido)";
+        dim("  (pausado" + suffix + ", aguardando 'jarvis volta' ou 'jarvis voz --voltar')");
+      }
+      // Aguarda __RESUME__ (5s por iteracao) — se disparar, retoma
+      const resumed = await new Promise((resolve) => {
+        if (!listener) return resolve(false);
+        const onResume = () => {
+          clearTimeout(t);
+          listener.off("resume", onResume);
+          resolve(true);
+        };
+        const t = setTimeout(() => {
+          listener.off("resume", onResume);
+          resolve(false);
+        }, 5000);
+        listener.on("resume", onResume);
+      });
+      if (resumed) {
+        resumeVoice();
+        justResumedByVoice = true;
+      }
       continue;
+    }
+
+    if (pauseModeActive) {
+      // Saindo do modo pausado (por voz ou por expiracao do timer)
+      listener.setMode("wake");
+      pauseModeActive = false;
+
+      if (justResumedByVoice) {
+        justResumedByVoice = false;
+        processing = true;
+        ttsActive = true;
+        listener.setMode("cancel");
+        const ctl = speakTextControllable("Voltei, pode falar");
+        const onCancelR = () => ctl.cancel();
+        listener.on("cancel", onCancelR);
+        try { await ctl.promise; } catch { /* silencioso */ }
+        finally {
+          listener.off("cancel", onCancelR);
+          listener.setMode("wake");
+          ttsActive = false;
+          processing = false;
+        }
+      }
     }
 
     dim('  (aguardando "Jarvis"...)');
@@ -267,7 +313,7 @@ export async function runVoskWakeLoop(opts = {}) {
     const shouldGreet = cfg.greetOnWake !== false;
     const greeting = cfg.wakeGreeting
       ? cfg.wakeGreeting
-      : buildGreeting({ name: cfg.ownerName || null });
+      : buildGreeting({ name: cfg.greetingName || null });
 
     if (shouldGreet && greeting) {
       processing = true;
@@ -437,6 +483,39 @@ export async function runVoskWakeLoop(opts = {}) {
       }
 
       // Intent 'cancel' retornou 'cancel': encerra a sessao com despedida
+      if (action === "pause") {
+        // Parse duracao do texto original ("pausa por 30 minutos")
+        const durationMs = parseVoicePauseDuration(text);
+        const until = durationMs ? Date.now() + durationMs : null;
+        pauseVoice({ until });
+
+        inSession = false;
+
+        // Confirmacao falada
+        const confirmMsg = until
+          ? "Pausado por " + formatRemaining(until)
+          : "Pausado. Me chame quando quiser";
+
+        processing = true;
+        ttsActive = true;
+        listener.setMode("cancel");
+        const ctlP = speakTextControllable(confirmMsg);
+        const onCancelP = () => ctlP.cancel();
+        listener.on("cancel", onCancelP);
+        try { await ctlP.promise; } catch { /* silencioso */ }
+        finally {
+          listener.off("cancel", onCancelP);
+          listener.setMode("wake");
+          ttsActive = false;
+          processing = false;
+        }
+
+        if (cfg.voiceOutputMode === "session-window") {
+          closeSessionTerminal();
+        }
+        break;
+      }
+
       if (action === "cancel") {
         dim("Sessao encerrada por comando de voz.");
         inSession = false;

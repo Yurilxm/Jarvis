@@ -240,6 +240,151 @@ function summarizeScan(lines) {
 }
 
 // ═════════════════════════════════════════════════════════════════════
+// Commit
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * @param {string[]} lines
+ * @returns {string|null}
+ */
+function summarizeCommit(lines) {
+  const hasCommit = lines.some((l) => /Commit realizado com sucesso/i.test(l));
+  const hasPush = lines.some((l) => /Push realizado com sucesso/i.test(l));
+  if (!hasCommit && !hasPush) return null;
+  if (hasCommit && hasPush) return "Commit feito e enviado.";
+  if (hasPush) return "Push enviado.";
+  return "Commit feito.";
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Pull
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * @param {string[]} lines
+ * @returns {string|null}
+ */
+function summarizePull(lines) {
+  // Git output: "Already up to date." / "N files changed, M insertions(+), ..."
+  const joined = lines.join(" ");
+  if (/Already up to date|Ja atualizado|já atualizado/i.test(joined)) {
+    return "Ja estava atualizado.";
+  }
+  const m = joined.match(/(\d+)\s+files?\s+changed/i);
+  if (m) {
+    const n = Number(m[1]);
+    return `Atualizado. ${n} ${n === 1 ? "arquivo alterado" : "arquivos alterados"}.`;
+  }
+  if (lines.some((l) => /Repositorio atualizado|Repositório atualizado/i.test(l))) {
+    return "Repositorio atualizado.";
+  }
+  return null;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// History
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * @param {string[]} lines
+ * @returns {string|null}
+ */
+function summarizeHistory(lines) {
+  for (const l of lines) {
+    const m = l.match(/hist[oó]rico\s*[·\-]\s*(\d+)\s+evento/i);
+    if (m) {
+      const n = Number(m[1]);
+      if (n === 0) return "Nenhum evento no historico.";
+      return n === 1 ? "1 evento no historico." : `Ultimos ${n} eventos no historico.`;
+    }
+  }
+  if (lines.some((l) => /Nenhum evento ainda/i.test(l))) {
+    return "Nenhum evento no historico.";
+  }
+  return null;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Docs
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * @param {string[]} lines
+ * @returns {string|null}
+ */
+function summarizeDocs(lines) {
+  for (const l of lines) {
+    const m = l.match(/([\w.-]+\.(md|MD))\s+salvo com sucesso/i);
+    if (m) {
+      const file = m[1].toUpperCase();
+      if (file.includes("CHANGELOG")) return "Changelog atualizado.";
+      if (file.includes("README")) return "Readme atualizado.";
+      return file + " atualizado.";
+    }
+  }
+  if (lines.some((l) => /salvo com sucesso/i.test(l))) {
+    return "Documento atualizado.";
+  }
+  return null;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Review
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * @param {string[]} lines
+ * @returns {string|null}
+ */
+function summarizeReview(lines) {
+  if (lines.some((l) => /revis[aã]o de c[oó]digo/i.test(l))) {
+    return "Revisao concluida. Veja os detalhes no terminal.";
+  }
+  return null;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Undo
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * @param {string[]} lines
+ * @returns {string|null}
+ */
+function summarizeUndo(lines) {
+  if (lines.some((l) => /commit desfeito|desfeito com sucesso|soft reset/i.test(l))) {
+    return "Commit desfeito.";
+  }
+  if (lines.some((l) => /nenhum commit para desfazer|nada para desfazer/i.test(l))) {
+    return "Nao havia commit para desfazer.";
+  }
+  return null;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Release
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * @param {string[]} lines
+ * @returns {string|null}
+ */
+function summarizeRelease(lines) {
+  for (const l of lines) {
+    const m = l.match(/vers[aã]o\s+v?(\d+\.\d+\.\d+)/i);
+    if (m) return `Versao ${m[1]} criada.`;
+  }
+  for (const l of lines) {
+    const m = l.match(/tag\s+v?(\d+\.\d+\.\d+)/i);
+    if (m) return `Versao ${m[1]} criada.`;
+  }
+  if (lines.some((l) => /release criada|tag criada/i.test(l))) {
+    return "Nova versao criada.";
+  }
+  return null;
+}
+
+// ═════════════════════════════════════════════════════════════════════
 // Dispatcher
 // ═════════════════════════════════════════════════════════════════════
 
@@ -268,6 +413,14 @@ export function summarizeForSpeech(intent, argv, lines, cfg = {}) {
     case 'jira-move': return summarizeJiraMove(clean);
     case 'jira-create': return summarizeJiraCreate(clean);
     case 'scan': return summarizeScan(clean);
+    case 'commit': return summarizeCommit(clean);
+    case 'pull': return summarizePull(clean);
+    case 'history': return summarizeHistory(clean);
+    case 'docs-changelog': return summarizeDocs(clean);
+    case 'docs-readme': return summarizeDocs(clean);
+    case 'review': return summarizeReview(clean);
+    case 'undo': return summarizeUndo(clean);
+    case 'release': return summarizeRelease(clean);
     default: return null;
   }
 }
