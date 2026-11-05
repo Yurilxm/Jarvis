@@ -20,6 +20,7 @@ import {
   muted,
 } from '../ui.js';
 import { adfToText } from './adf.js';
+import { readClipboard } from '../transcribe/clipboard.js';
 
 // Cache em memória para lista de assignees (vive apenas durante a sessão)
 let assigneeCache = null;
@@ -346,10 +347,48 @@ DESCRIÇÃO: <descrição aqui>`;
     }
 
     if (action === 'edit-description') {
-      description = await input({
-        message: 'Descrição:',
-        default: description,
+      const mode = await select({
+        message: 'Como editar a descricao?',
+        choices: [
+          { name: 'Colar da area de transferencia', value: 'clipboard' },
+          { name: 'Editar no editor externo (Notepad)', value: 'editor' },
+          { name: 'Digitar em uma linha (simples)', value: 'inline' },
+        ],
       });
+
+      if (mode === 'clipboard') {
+        try {
+          const text = await readClipboard();
+          const trimmed = String(text || '').trim();
+          if (!trimmed) {
+            warn('Area de transferencia vazia. Descricao mantida.');
+          } else {
+            description = trimmed;
+            const lines = description.split('\n').length;
+            success('Descricao colada (' + description.length + ' chars, ' + lines + ' linha' + (lines > 1 ? 's' : '') + ').');
+          }
+        } catch (err) {
+          error('Falha ao ler a area de transferencia: ' + err.message);
+          dim('  Verifique se o pacote clipboardy esta instalado.');
+        }
+      } else if (mode === 'editor') {
+        try {
+          const { editor } = await import('@inquirer/prompts');
+          description = await editor({
+            message: 'Descricao (salve e feche o editor):',
+            default: description,
+            postfix: '.md',
+          });
+        } catch (err) {
+          error('Falha no editor externo: ' + err.message);
+          dim('  Fallback: use a opcao Colar da area de transferencia.');
+        }
+      } else {
+        description = await input({
+          message: 'Descricao:',
+          default: description,
+        });
+      }
     }
 
     if (action === 'regenerate') {
@@ -401,15 +440,8 @@ DESCRIÇÃO: <descrição aqui>`;
     }
   }
 
-  // Status inicial
-  const initialStatus = await select({
-    message: 'Status inicial:',
-    choices: [
-      { name: 'Tarefas pendentes (To Do)', value: 'todo' },
-      { name: 'Em andamento (In Progress)', value: 'inprogress' },
-      { name: 'Concluído (Done)', value: 'done' },
-    ],
-  });
+  // Status inicial: removido. A issue e criada em To Do e depois
+  // oferecemos as transicoes reais do workflow (inclui colunas customizadas).
 
   const confirmed = await confirm({
     message: 'Criar task?',
@@ -446,27 +478,40 @@ DESCRIÇÃO: <descrição aqui>`;
       { title: 'task criada' }
     );
 
-    if (initialStatus !== 'todo') {
+    // Consulta as transicoes reais do workflow (inclui colunas
+    // customizadas: Testes, Em revisao, etc.)
+    let movedTo = null;
+    try {
       const transitions = await getTransitions(issue.key);
-      let targetTransition;
+      const available = transitions.transitions || [];
 
-      if (initialStatus === 'inprogress') {
-        targetTransition = transitions.transitions?.find(
-          t => t.to.name.toLowerCase().includes('andamento')
-        );
-      } else if (initialStatus === 'done') {
-        targetTransition = transitions.transitions?.find(
-          t => t.to.name.toLowerCase().includes('concluído') || t.to.name.toLowerCase().includes('done')
-        );
-      }
+      if (available.length > 0) {
+        const choices = [
+          { name: 'Manter no status atual', value: '__keep__' },
+          ...available.map(t => ({
+            name: 'Mover para ' + t.to.name,
+            value: t.id,
+          })),
+        ];
 
-      if (targetTransition) {
-        await transitionIssue(issue.key, targetTransition.id);
-        success(`Task ${issue.key} movida para "${targetTransition.to.name}"!`);
+        const chosen = await select({
+          message: 'Mover a task para algum status agora?',
+          choices,
+        });
+
+        if (chosen !== '__keep__') {
+          const target = available.find(t => t.id === chosen);
+          await transitionIssue(issue.key, chosen);
+          movedTo = target && target.to ? target.to.name : null;
+          if (movedTo) {
+            success('Task ' + issue.key + ' movida para ' + movedTo);
+          }
+        }
       }
+    } catch (err) {
+      dim('  (nao foi possivel listar transicoes: ' + err.message + ')');
     }
-
-    if (initialStatus === 'inprogress') {
+    if (movedTo && /andamento|in progress|doing/i.test(movedTo)) {
       const shouldBranch = await confirm({
         message: `Criar branch feature/${issue.key}-descricao?`,
         default: false,

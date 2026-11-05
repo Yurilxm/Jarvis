@@ -23,3 +23,16 @@ export async function copyToClipboard(text) {
   const clipboard = await loadClipboardy();
   await clipboard.write(text);
 }
+
+/**
+ * Le texto da area de transferencia.
+ * Usado pelo jira create pra colar descricao multilinha sem perder o
+ * conteudo depois do primeiro \n (input() do Inquirer e single-line).
+ *
+ * @returns {Promise<string>}
+ */
+export async function readClipboard() {
+  const clipboard = await loadClipboardy();
+  const text = await clipboard.read();
+  return String(text || "");
+}
